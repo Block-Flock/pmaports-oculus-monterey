@@ -3,7 +3,7 @@
 maintainer=""
 pkgname=linux-oculus-monterey
 pkgver=4.4.205
-pkgrel=0
+pkgrel=1
 _commit=6929f734ce0e602018790ff3a52dc7bad646af60
 pkgdesc="Oculus Quest 1 kernel fork"
 arch="aarch64"
@@ -19,9 +19,10 @@ makedepends="
 	openssl-dev
 	perl
 	"
-source="
+	source="
 	$pkgname-$_commit.tar.gz::https://github.com/facebookincubator/oculus-linux-kernel/archive/$_commit.tar.gz
 	config-${pkgname#linux-}.$arch
+	90hz-default-v2.patch
 	"
 builddir="$srcdir/oculus-linux-kernel-$_commit"
 options="
@@ -58,4 +59,5 @@ package() {
 sha512sums="
 535201edc88b0202a32831f9a2542e692067ef96313648d3357ff28f77e5f483f6b25a498a955c0394949d51597db19cd39c5c90f114ae33265deb2d5c114e58  linux-oculus-monterey-6929f734ce0e602018790ff3a52dc7bad646af60.tar.gz
 f81859de2c0f70dd219309bec5fa9ae3c1baf2ca2e643cf3f6f09a5256401641541fdc5520e8628428da3413d414e82f70809e2b5491e12342b5c177b56aec41  config-oculus-monterey.aarch64
+1ed6cc279ff3275a4d1c7917c2f8d6e620d4486f4545e30ac47356459cff89521016e0a2fa21694de30a9dbfce25d3b31794d8037ddc7d64b8757ba1093072cf  90hz-default-v2.patch
 "

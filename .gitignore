@@ -1,0 +1,3 @@
+# Read-only device and OTA analysis artifacts. These can contain proprietary
+# firmware and must not be committed.
+firmware-analysis/

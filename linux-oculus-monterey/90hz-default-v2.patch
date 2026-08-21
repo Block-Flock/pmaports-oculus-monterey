@@ -1,0 +1,19 @@
+From: postmarketOS Oculus Monterey maintainers <maintainers@postmarketos.org>
+Subject: [PATCH] arm64: dts: oculus: make 90 Hz the Lightman panel default
+
+The production Quest 1 firmware running on Monterey exposes a 90 Hz panel
+mode. Keep dynamic FPS enabled so the panel can use its 72 Hz compatibility
+mode, but make 90 Hz the default and upper bound.
+
+---
+ arch/arm64/boot/dts/oculus/dsi-panel-sdc-lightman-video.dtsi | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/oculus/dsi-panel-sdc-lightman-video.dtsi b/arch/arm64/boot/dts/oculus/dsi-panel-sdc-lightman-video.dtsi
+--- a/arch/arm64/boot/dts/oculus/dsi-panel-sdc-lightman-video.dtsi
++++ b/arch/arm64/boot/dts/oculus/dsi-panel-sdc-lightman-video.dtsi
+@@ -31,2 +31,2 @@
+-		qcom,mdss-dsi-max-refresh-rate = <72>;
+-		qcom,mdss-dsi-panel-framerate = <72>;
++		qcom,mdss-dsi-max-refresh-rate = <90>;
++		qcom,mdss-dsi-panel-framerate = <90>;

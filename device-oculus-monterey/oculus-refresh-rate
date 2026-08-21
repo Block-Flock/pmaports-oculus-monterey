@@ -1,0 +1,38 @@
+#!/bin/sh
+# Select a firmware-proven Quest 1 panel rate through the downstream MDSS
+# dynamic-FPS interface. Run as root; this never writes a boot partition.
+
+set -eu
+
+node=/sys/class/graphics/fb0/dynamic_fps
+
+usage() {
+	echo "usage: oculus-refresh-rate {72|90|status}" >&2
+	exit 64
+}
+
+[ "${1:-}" ] || usage
+[ -e "$node" ] || {
+	echo "dynamic FPS is unavailable; the Monterey display driver is not active" >&2
+	exit 69
+}
+
+case "$1" in
+	status)
+		cat "$node"
+		;;
+	72|90)
+		[ "$(id -u)" -eq 0 ] || {
+			echo "must run as root" >&2
+			exit 77
+		}
+		printf '%s\n' "$1" > "$node"
+		actual=$(cat "$node")
+		[ "$actual" = "$1" ] || {
+			echo "requested $1 Hz but driver reports $actual Hz" >&2
+			exit 70
+		}
+		echo "panel now running at $actual Hz"
+		;;
+	*) usage ;;
+esac

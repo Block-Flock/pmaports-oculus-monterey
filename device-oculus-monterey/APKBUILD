@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -14,9 +14,10 @@ depends="
 	postmarketos-base-downstream
 	"
 makedepends="devicepkg-dev"
-source="
+	source="
 	deviceinfo
 	modules-initfs
+	oculus-refresh-rate
 	"
 options="!archcheck !check"
 
@@ -26,6 +27,12 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+	install -Dm755 "$srcdir/oculus-refresh-rate" \
+		"$pkgdir/usr/sbin/oculus-refresh-rate"
 }
 
-sha512sums="(run 'pmbootstrap checksum device-oculus-monterey' to fill)"
+sha512sums="
+9ba5e026cb2d17c0b88bf901df415ced0b53567da816573b6b45d67893bba6cc2f7d1b941169adcc4f8c523516a257fdc29da9ccc5b239c4818551a8c88eea22  deviceinfo
+e70bae17df23dcaaaea0e2d3616556f04baa23f8ee1357785c0f539bf97282d8ddff53953e155b72689bb73beb38c2da3d08de2a61e866684edfa10a6593885d  modules-initfs
+af54de07cabd99bce71328e2a5cd334650622415f7d100ee476f9db2091df4bc58a2d1651eaddeba9910313a0155edbfab3900a1865689ecb68c419cee7cf019  oculus-refresh-rate
+"
