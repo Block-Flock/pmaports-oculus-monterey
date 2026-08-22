@@ -108,6 +108,11 @@ doas oculus-syncboss-dump -n 16 -t 3000 >syncboss-idle.txt
 ```
 
 Repeat while moving the headset, then compare record types and changing fields.
+A v50 HMD IMU packet is reported as type `0x50`; the probe decodes its MCU
+timestamp, acceleration in m/s2, angular velocity in rad/s, and metadata while
+retaining the complete hex record for format validation. This layout was
+derived from the exact v50 `libsyncboss.so` packet handler and must still be
+confirmed against captures from the headset.
 A timeout means no producer has enabled the relevant sensor stream; it is not a
 reason to write an unverified command to SyncBoss. Captures can contain device
 timing and controller identifiers, so redact them before attaching them to a

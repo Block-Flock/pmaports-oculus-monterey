@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +13,10 @@
 #define DEFAULT_PACKETS 8U
 #define DEFAULT_TIMEOUT_MS 2000
 #define MAX_RECORD_SIZE 255U
+#define HMD_IMU_PACKET_TYPE 0x50U
+#define HMD_IMU_PAYLOAD_SIZE 36U
+#define STANDARD_GRAVITY 9.80665f
+#define DEGREES_TO_RADIANS 0.017453292519943295f
 
 static void
 usage(const char *name)
@@ -37,6 +42,67 @@ parse_u32(const char *text, unsigned int *value)
 }
 
 static void
+decode_imu(const uint8_t *payload, size_t length)
+{
+	uint64_t timestamp;
+	uint32_t metadata;
+	float acceleration[3];
+	float angular_velocity[3];
+	unsigned int i;
+
+	if (length < HMD_IMU_PAYLOAD_SIZE) {
+		printf("imu truncated=yes expected=%u actual=%zu\n",
+		       HMD_IMU_PAYLOAD_SIZE, length);
+		return;
+	}
+
+	memcpy(&timestamp, payload, sizeof(timestamp));
+	memcpy(acceleration, payload + 8, sizeof(acceleration));
+	memcpy(angular_velocity, payload + 20, sizeof(angular_velocity));
+	memcpy(&metadata, payload + 32, sizeof(metadata));
+
+	for (i = 0; i < 3; i++) {
+		acceleration[i] *= STANDARD_GRAVITY;
+		angular_velocity[i] *= DEGREES_TO_RADIANS;
+	}
+	printf("imu timestamp=%" PRIu64 " metadata=0x%08" PRIx32
+	       " accel_m_s2=%.9g,%.9g,%.9g gyro_rad_s=%.9g,%.9g,%.9g\n",
+	       timestamp, metadata,
+	       acceleration[0], acceleration[1], acceleration[2],
+	       angular_velocity[0], angular_velocity[1], angular_velocity[2]);
+}
+
+static void
+decode_packets(const uint8_t *data, size_t length)
+{
+	size_t offset;
+
+	if (length < 3 || data[0] != 1 || data[1] < 3 || data[1] > length || data[2] != 0)
+		return;
+
+	offset = data[1];
+	while (length - offset >= 3) {
+		uint8_t type = data[offset];
+		uint8_t sequence = data[offset + 1];
+		uint8_t payload_length = data[offset + 2];
+		size_t packet_length = (size_t)payload_length + 3;
+
+		if (packet_length > length - offset) {
+			printf("packet offset=%zu truncated=yes payload_length=%u remaining=%zu\n",
+			       offset, payload_length, length - offset - 3);
+			return;
+		}
+		printf("packet offset=%zu type=0x%02x sequence=%u payload_length=%u\n",
+		       offset, type, sequence, payload_length);
+		if (type == HMD_IMU_PACKET_TYPE)
+			decode_imu(data + offset + 3, payload_length);
+		offset += packet_length;
+	}
+	if (offset != length)
+		printf("trailing_bytes=%zu\n", length - offset);
+}
+
+static void
 dump_record(unsigned int sequence, const uint8_t *data, size_t length)
 {
 	size_t i;
@@ -54,6 +120,7 @@ dump_record(unsigned int sequence, const uint8_t *data, size_t length)
 		if (i % 16 == 15 || i + 1 == length)
 			putchar('\n');
 	}
+	decode_packets(data, length);
 }
 
 int

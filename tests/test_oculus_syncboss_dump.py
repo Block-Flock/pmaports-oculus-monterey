@@ -1,4 +1,5 @@
 import pathlib
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -41,6 +42,24 @@ class OculusSyncbossDumpTests(unittest.TestCase):
             [str(self.binary), "-n", "0"], text=True, capture_output=True, check=False
         )
         self.assertEqual(result.returncode, 2)
+
+    def test_decodes_hmd_imu_packet_in_si_units(self):
+        payload = struct.pack("<QffffffI", 123456789, 1.0, -2.0, 0.5, 180.0, -90.0, 45.0, 7)
+        record = bytes([1, 3, 0, 0x50, 9, len(payload)]) + payload
+        with tempfile.NamedTemporaryFile() as stream:
+            stream.write(record)
+            stream.flush()
+            result = subprocess.run(
+                [str(self.binary), "-d", stream.name, "-n", "1", "-t", "0"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("type=0x50 sequence=9 payload_length=36", result.stdout)
+        self.assertIn("imu timestamp=123456789 metadata=0x00000007", result.stdout)
+        self.assertIn("accel_m_s2=9.80665016,-19.6133003,4.90332508", result.stdout)
+        self.assertIn("gyro_rad_s=3.14159274,-1.57079637,0.785398185", result.stdout)
 
     def test_missing_device_fails_closed(self):
         result = subprocess.run(
