@@ -9,9 +9,10 @@ its embedded root filesystem mounted read-write, OpenRC running, and
 authenticated SSH reachable over stable USB NCM. The initramfs UFS mappings
 and matching UUID handoff were proven on-device. The framebuffer reports its
 2880x1600 90 Hz mode, but visible compositor output, measured 72/90
-presentation, persistent normal-system device nodes, Wi-Fi, Bluetooth, audio,
-tracking, passthrough, and a VR desktop remain separate validation milestones
-until they pass on-device tests.
+presentation, Wi-Fi, Bluetooth, audio, tracking, passthrough, and a VR desktop
+remain separate validation milestones until they pass on-device tests. The
+normal-system mdev service has been cold-booted successfully and populates the
+framebuffer, KGSL, SyncBoss, input, media, and V4L2 nodes.
 
 ## Display rate
 

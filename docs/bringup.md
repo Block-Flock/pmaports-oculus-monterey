@@ -57,7 +57,9 @@ command-line UUIDs, `pmOS_root` mounted read-write as `/`, OpenRC completed, and
 authenticated SSH accepted commands over USB NCM. The first normal-system boot
 also proved that udev cannot repopulate `/dev` without devtmpfs; the device
 package now starts a foreground mdev daemon and performs an early full scan.
-That persistent mdev service still requires a repeated cold-boot check.
+A subsequent read-back-verified cold boot confirmed that service stays up and
+populates framebuffer, KGSL, SyncBoss, input, media, and V4L2 nodes before the
+default runlevel.
 
 At any pmOS shell, root can return directly to the bootloader with
 `oculus-reboot-bootloader`. From the authenticated host control path, use
