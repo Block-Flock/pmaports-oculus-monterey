@@ -14,6 +14,26 @@ remain separate validation milestones until they pass on-device tests. The
 normal-system mdev service has been cold-booted successfully and populates the
 framebuffer, KGSL, SyncBoss, input, media, and V4L2 nodes.
 
+## Current status in plain language
+
+This port boots from slot B and gives a recoverable Alpine system over USB.
+It does **not** have a visible desktop or working VR yet.
+
+| Area | Status | What that means |
+| --- | --- | --- |
+| Boot and root filesystem | Verified | Cold boot reaches OpenRC on slot B. |
+| USB recovery | Verified | SSH works over USB NCM and the headset can reboot to its bootloader without ADB. |
+| Display panel | Partly verified | The 2880x1600 framebuffer and 90 Hz panel mode exist; visible pixels and measured presentation rate are still unverified. |
+| GPU | Hardware found | The downstream kernel exposes KGSL, not DRM. The matching v50 Adreno/HWC userspace must be loaded locally from the owner's firmware. |
+| Desktop and OpenXR | In progress | The target is a small KWin Wayland session plus Monado, not the full Plasma desktop. |
+| Quest Touch controllers | In progress | They use the SyncBoss/Pulsar radio, not ordinary Bluetooth. Firmware updating will remain disabled. |
+| Tracking and passthrough | Not working | Kernel devices exist, but native Monado interfaces are not implemented yet. |
+| Wi-Fi and audio | Not working | These remain separate bring-up tasks. |
+
+For the desktop, GPU, OpenXR, and controller plan, read
+[`docs/vr-desktop.md`](docs/vr-desktop.md). The rest of this README records the
+boot-image and hardware details needed to reproduce or debug the verified base.
+
 ## Display rate
 
 The `q1_22310100490800000` OTA defaults the Lightman panel to 72 Hz and caps
