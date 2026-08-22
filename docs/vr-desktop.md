@@ -98,6 +98,21 @@ The planned bridge has two parts:
 - An unprivileged shell client for status, left/right pairing, battery,
   reconnect, and haptic tests.
 
+The device package also installs `oculus-syncboss-dump`, a deliberately
+read-only stream probe used to map the MCU packet format before that bridge is
+enabled. It opens only `/dev/syncboss_stream0`, never sends an ioctl, and never
+opens the power, control, or command nodes. Capture a short sample with:
+
+```sh
+doas oculus-syncboss-dump -n 16 -t 3000 >syncboss-idle.txt
+```
+
+Repeat while moving the headset, then compare record types and changing fields.
+A timeout means no producer has enabled the relevant sensor stream; it is not a
+reason to write an unverified command to SyncBoss. Captures can contain device
+timing and controller identifiers, so redact them before attaching them to a
+public issue.
+
 Package revision r17 includes the first strict command gateway. It runs the
 owner's `syncboss_input_tool` with the Android linker directly from the
 read-only slot-A mount and accepts only status, list, scan, watch, pair,
@@ -138,7 +153,9 @@ pairing data may be committed or included in an APK.
 - [x] Build the patched KWin VR plugin and `kwin_wayland` for aarch64.
 - [ ] Show the framebuffer/labwc diagnostic on the panel.
 - [ ] Start the patched KWin VR plugin on the headset against Monado.
-- [ ] Start Monado with a Monterey HMD stub and render a stereo test scene.
+- [ ] Capture and document real SyncBoss IMU records with the read-only probe.
+- [ ] Start Monado with a Monterey hardware backend and render a stereo test
+      scene (never substitute simulated pose for this gate).
 - [ ] Present through the v50 Qualcomm graphics compatibility layer.
 - [ ] Enumerate already-paired Quest 1 Touch controllers without firmware
       writes.

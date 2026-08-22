@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=17
+pkgrel=18
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -34,6 +34,7 @@ source="
 	oculus-controller
 	oculus-controller.initd
 	oculus-reboot-bootloader.c
+	oculus-syncboss-dump.c
 	oculus-recovery.sudoers
 	oculus-refresh-rate
 	oculus-rmtfs
@@ -50,6 +51,8 @@ build() {
 	devicepkg_build $startdir $pkgname
 	$CC $CPPFLAGS $CFLAGS -static $LDFLAGS \
 		-o oculus-reboot-bootloader "$srcdir/oculus-reboot-bootloader.c"
+	$CC $CPPFLAGS $CFLAGS $LDFLAGS \
+		-o oculus-syncboss-dump "$srcdir/oculus-syncboss-dump.c"
 }
 
 package() {
@@ -62,6 +65,8 @@ package() {
 		"$pkgdir/etc/init.d/oculus-controller"
 	install -Dm755 oculus-reboot-bootloader \
 		"$pkgdir/usr/sbin/oculus-reboot-bootloader"
+	install -Dm755 oculus-syncboss-dump \
+		"$pkgdir/usr/sbin/oculus-syncboss-dump"
 	install -Dm755 "$srcdir/oculus-usb-recovery" \
 		"$pkgdir/usr/sbin/oculus-usb-recovery"
 	install -Dm755 "$srcdir/oculus-rmtfs" \
@@ -114,6 +119,7 @@ sha512sums="
 7b0e5292dec5460e05ab205363d9891314bd691fbbdfdb83647bb8ff1590c87a5eefdf3d5724c308ae08b47ae3e954ab7051692217dbecd6cb5bb24fa153c268  oculus-controller
 f3dc6e7bc6d21c9fa6c59592e61513e7aaad820c495db49a7b5a54dd0fb11716b7eedd1240fd9c82441b96e5378ef45b78c48a49a7cd1593003ca50f9f939c36  oculus-controller.initd
 a7cd382244790ddc038f8c1c61982d660803dba2e27596db421f5ac2399ac0a079041f41c11fdb7762b3a67e7104426e74f6cbb967da2f02162c27125b50672b  oculus-reboot-bootloader.c
+9e145b2d91ce1b6e8712a852da914f2a6a582a34d27979f463b64fe4c2137e28ccdda974f623836b712d8a44160374e7e06c01af000c49120c6682fd3f6178c0  oculus-syncboss-dump.c
 b123b171baeba739e960aa2f5037e5697b0d2c7090b38f9f7eef5c03659011f90303882a85f4ed81af1315da9089737da83092a5f28e8515f7882d53002a5f38  oculus-recovery.sudoers
 03649b9cb60f549d052c910057b5472f5285cd8371fa83404e106e4c2f16acc3157364c631378889a2e47acd654adfeca83312c66f8b19eed7468a33819fe4f6  oculus-refresh-rate
 7d5cd90786e9b256847ab2e92dea5c4c495225560185fb73ea1815f443fab04223809aad60fd386f3c3c48696dfc0dbb0d8f65ec2ed2debadc09a8d8e3e3c535  oculus-rmtfs
