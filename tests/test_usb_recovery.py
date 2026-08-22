@@ -21,6 +21,7 @@ DEBUG_LOGIN = (
 SUBPARTITION_MAPPER = (
     ROOT / "device-oculus-monterey" / "oculus-map-pmos-subpartitions"
 )
+FLASH_SLOT_B = ROOT / "scripts" / "flash-verified-slot-b"
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -130,6 +131,11 @@ class UsbRecoveryTest(unittest.TestCase):
             hook.index('oculus-map-pmos-subpartitions'),
             hook.index('nc -lk -s 172.16.42.1'),
         )
+
+    def test_slot_b_installer_measures_export_symlink_targets(self) -> None:
+        installer = FLASH_SLOT_B.read_text()
+        self.assertIn('boot_size=$(stat -Lc %s "$boot")', installer)
+        self.assertIn('system_size=$(stat -Lc %s "$system")', installer)
 
 
 if __name__ == "__main__":

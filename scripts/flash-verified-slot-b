@@ -16,8 +16,10 @@ system=$2
 	exit 66
 }
 
-boot_size=$(stat -c %s "$boot")
-system_size=$(stat -c %s "$system")
+# pmbootstrap export creates symlinks. Measure their targets so the alignment
+# and partition-size guards apply to the actual images.
+boot_size=$(stat -Lc %s "$boot")
+system_size=$(stat -Lc %s "$system")
 [ "$boot_size" -le 67108864 ] || { echo "boot image exceeds boot_b" >&2; exit 65; }
 [ "$system_size" -le 2684354560 ] || { echo "system image exceeds system_b" >&2; exit 65; }
 [ "$((boot_size % 4096))" -eq 0 ] || { echo "boot image is not 4096-byte aligned" >&2; exit 65; }
