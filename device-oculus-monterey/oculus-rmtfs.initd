@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+
+supervisor=supervise-daemon
+description="Read-only Qualcomm remote filesystem service for Monterey"
+
+command=/usr/bin/rmtfs
+command_args="-P -r"
+export LD_PRELOAD=/usr/lib/preload/libqipcrtr4msmipc.so
+
+depend() {
+	need oculus-stock-firmware
+	after oculus-mdev
+	before networkmanager wpa_supplicant
+}
+
+start_pre() {
+	/usr/sbin/oculus-rmtfs start
+}
+
+stop_post() {
+	/usr/sbin/oculus-rmtfs stop
+}

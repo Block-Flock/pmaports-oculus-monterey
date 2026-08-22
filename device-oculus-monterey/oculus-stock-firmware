@@ -6,6 +6,7 @@
 set -eu
 
 firmware_root=${OCULUS_FIRMWARE_ROOT:-/lib/firmware/postmarketos}
+fallback_root=${OCULUS_FIRMWARE_FALLBACK_ROOT:-/lib/firmware}
 modem_mount=${OCULUS_MODEM_MOUNT:-/vendor/firmware_mnt}
 system_mount=${OCULUS_SYSTEM_MOUNT:-/vendor/oculus-system}
 links_file=${OCULUS_FIRMWARE_LINKS:-/run/oculus-stock-firmware.links}
@@ -102,10 +103,11 @@ link_firmware_file() {
 
 link_firmware_directory() {
 	source_directory=$1
+	destination_directory=$2
 	[ -d "$source_directory" ] || return 0
 	for source in "$source_directory"/*; do
 		[ -f "$source" ] || continue
-		link_firmware_file "$source" "$firmware_root/${source##*/}"
+		link_firmware_file "$source" "$destination_directory/${source##*/}"
 	done
 }
 
@@ -113,7 +115,7 @@ remove_managed_links() {
 	[ -r "$links_file" ] || return 0
 	while IFS= read -r link; do
 		case "$link" in
-		"$firmware_root"/*)
+		"$firmware_root"/*|"$fallback_root"/*)
 			[ -L "$link" ] && rm -f "$link"
 			;;
 		esac
@@ -149,7 +151,8 @@ start_firmware() {
 	modem_device=$(find_partition modem_a)
 	system_device=$(find_partition system_a)
 
-	mkdir -p "$firmware_root/wlan/qca_cld" "${links_file%/*}"
+	mkdir -p "$firmware_root/wlan/qca_cld" "$fallback_root" \
+		"${links_file%/*}"
 	remove_managed_links
 	if ! mount_read_only "$modem_device" "$modem_mount" vfat \
 		ro,nosuid,nodev,noexec; then
@@ -163,8 +166,17 @@ start_firmware() {
 
 	# Android's ueventd searches firmware_mnt/image first. Preserve that
 	# preference, then fill non-conflicting codec/device firmware from system.
-	link_firmware_directory "$modem_mount/image"
-	link_firmware_directory "$system_mount/system/vendor/firmware"
+	link_firmware_directory "$modem_mount/image" "$firmware_root"
+	link_firmware_directory "$system_mount/system/vendor/firmware" \
+		"$firmware_root"
+
+	# BusyBox mdev's built-in firmware fallback always searches
+	# /lib/firmware, ignoring firmware_class.path. Direct PIL loading can
+	# fall back for an individual segment, so expose the same read-only files
+	# at the standard root without replacing any packaged firmware.
+	link_firmware_directory "$modem_mount/image" "$fallback_root"
+	link_firmware_directory "$system_mount/system/vendor/firmware" \
+		"$fallback_root"
 	link_firmware_file \
 		"$system_mount/system/vendor/etc/wifi/WCNSS_qcom_cfg.ini" \
 		"$firmware_root/wlan/qca_cld/WCNSS_qcom_cfg.ini"

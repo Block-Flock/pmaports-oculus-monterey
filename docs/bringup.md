@@ -155,13 +155,24 @@ gates:
    firmware-ready QMI event, so no `wlan0` was created.
 
 The downstream 4.4 kernel uses Qualcomm's old `AF_MSM_IPC` IPC Router rather
-than modern `AF_QRTR`. Starting current Alpine `qrtr`/`pd-mapper` packages alone
-cannot satisfy that ABI. Opening `/dev/subsys_modem` without the matching
-persistent-storage transport caused the test headset to reboot immediately.
-Do not add that direct subsystem vote to a default service. The next radio gate
-is a bounded, recoverable implementation of the old IPC Router remote-storage
-and service-location path, followed by an ICNSS `FW READY` observation, a
-`wlan0` interface, scan results, association, and sustained traffic.
+than modern `AF_QRTR`. The `libqipcrtr4msmipc` preload adapts current libqrtr
+clients to that ABI. With the old kernel's `rmtfs` UIO node aliased to the name
+current upstream rmtfs expects, `rmtfs -P -r` remained running and registered
+QMI service `0x0e`, instance 1. The packaged `oculus-rmtfs` service reproduces
+only that proven, no-write stage. It does not use rmtfs's `-s` remote-processor
+control or open `/dev/subsys_modem`.
+
+A subsequent bounded modem vote reached MBA, then firmware segment
+`modem.b19` fell through the kernel's direct loader. BusyBox mdev ignores the
+custom `firmware_class.path` and searches `/lib/firmware`, so the valid segment
+was not found by fallback userspace. PIL's failure shutdown wedged and the
+hardware watchdog reset the headset. The firmware service now supplies
+collision-safe, runtime-only top-level links for that fallback, but a follow-up
+vote still reset before new crash evidence could replace the occupied pstore
+record. Do not enable a default subsystem vote. The next radio gate is an
+offline-auditable capture of every PIL fallback request and successful remote
+IPC transport registration, followed by ICNSS `FW READY`, a `wlan0` interface,
+scan results, association, and sustained traffic.
 
 Audio is independently blocked before firmware policy: the authentic kernel
 currently reports `msm8998-asoc-snd ... ASoC: platform (null) not registered`

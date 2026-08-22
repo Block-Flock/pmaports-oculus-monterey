@@ -28,6 +28,8 @@ STOCK_FIRMWARE = ROOT / "device-oculus-monterey" / "oculus-stock-firmware"
 STOCK_FIRMWARE_SERVICE = (
     ROOT / "device-oculus-monterey" / "oculus-stock-firmware.initd"
 )
+RMTFS_HELPER = ROOT / "device-oculus-monterey" / "oculus-rmtfs"
+RMTFS_SERVICE = ROOT / "device-oculus-monterey" / "oculus-rmtfs.initd"
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -166,11 +168,28 @@ class UsbRecoveryTest(unittest.TestCase):
         self.assertIn("ro,nosuid,nodev,noexec", helper)
         self.assertIn("ro,noload,nosuid,nodev,noexec", helper)
         self.assertNotIn("mount -o rw", helper)
+        self.assertIn("fallback_root=${OCULUS_FIRMWARE_FALLBACK_ROOT:-/lib/firmware}", helper)
+        self.assertIn('link_firmware_directory "$modem_mount/image" "$fallback_root"', helper)
 
     def test_stock_firmware_precedes_network_services(self) -> None:
         service = STOCK_FIRMWARE_SERVICE.read_text()
         self.assertIn("after oculus-mdev", service)
         self.assertIn("before networkmanager wpa_supplicant", service)
+
+    def test_rmtfs_is_read_only_and_never_votes_a_subsystem(self) -> None:
+        helper = RMTFS_HELPER.read_text()
+        service = RMTFS_SERVICE.read_text()
+        self.assertIn('command_args="-P -r"', service)
+        self.assertIn("libqipcrtr4msmipc.so", service)
+        self.assertIn("need oculus-stock-firmware", service)
+        self.assertNotIn(" -s", service)
+        self.assertNotIn("subsys_", helper + service)
+
+    def test_rmtfs_alias_refuses_unexpected_existing_node(self) -> None:
+        helper = RMTFS_HELPER.read_text()
+        self.assertIn('grep -qx rmtfs "$name"', helper)
+        self.assertIn('if [ ! -L "$alias" ]', helper)
+        self.assertIn('refusing to replace unexpected $alias', helper)
 
 
 if __name__ == "__main__":

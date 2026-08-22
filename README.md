@@ -94,6 +94,8 @@ the postmarketOS trial slot. Inspect it with:
 ```sh
 rc-service oculus-stock-firmware status
 oculus-stock-firmware status
+rc-service oculus-rmtfs status
+oculus-rmtfs status
 find /lib/firmware/postmarketos -maxdepth 2 -type l -ls
 ```
 
@@ -101,9 +103,18 @@ Live testing proved that these mounts let the built-in QCACLD loader create
 `/dev/wlan`. A working `wlan0` still depends on the older Qualcomm IPC Router
 and remote WCNSS/modem firmware-service handshake. The V50 kernel implements
 `AF_MSM_IPC`, not modern upstream `AF_QRTR`, so Alpine's current QRTR services
-are not a drop-in solution. Directly voting the modem subsystem on without its
-persistent-storage service caused an immediate reboot in testing; the default
-image therefore does not perform that unsafe shortcut or claim Wi-Fi support.
+need the `libqipcrtr4msmipc` compatibility preload. The device service uses it
+to register upstream rmtfs in no-write mode over the old router and never
+passes rmtfs's remote-processor `-s` option. It also creates the old UIO alias
+current rmtfs expects. The service does not vote the modem subsystem or claim
+Wi-Fi support.
+
+A bounded manual modem vote reached MBA but exposed a separate firmware-loader
+fallback mismatch, then wedged the vendor PIL shutdown path and triggered the
+watchdog. BusyBox mdev searches only `/lib/firmware`, so the mount service now
+creates collision-safe runtime links there as well as under the configured
+`postmarketos` directory. Remote-processor voting remains disabled until this
+path is proven without a watchdog reset.
 
 ## Build
 

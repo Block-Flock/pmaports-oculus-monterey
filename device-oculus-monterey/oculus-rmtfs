@@ -1,0 +1,79 @@
+#!/bin/sh
+
+# Prepare the downstream UIO naming expected by current upstream rmtfs. This
+# helper never starts or votes a remote processor; OpenRC runs rmtfs with -r.
+
+set -eu
+
+sys_class_uio=${OCULUS_SYS_CLASS_UIO:-/sys/class/uio}
+device_root=${OCULUS_DEVICE_ROOT:-/dev}
+alias=${OCULUS_RMTFS_ALIAS:-$device_root/qcom_rmtfs_uio1}
+state_file=${OCULUS_RMTFS_STATE:-/run/oculus-rmtfs-uio}
+
+log() {
+	printf '%s\n' "oculus-rmtfs: $*"
+}
+
+find_rmtfs_uio() {
+	found=
+	for name in "$sys_class_uio"/uio*/name; do
+		[ -r "$name" ] || continue
+		grep -qx rmtfs "$name" || continue
+		device=$device_root/${name%/name}
+		device=$device_root/${device##*/}
+		if [ -n "$found" ]; then
+			log "more than one UIO device is named rmtfs"
+			return 1
+		fi
+		found=$device
+	done
+
+	if [ -z "$found" ] || [ ! -c "$found" ]; then
+		log "could not resolve the rmtfs UIO character device"
+		return 1
+	fi
+	printf '%s\n' "$found"
+}
+
+prepare_alias() {
+	target=$(find_rmtfs_uio)
+	if [ -e "$alias" ] || [ -L "$alias" ]; then
+		if [ ! -L "$alias" ] || [ "$(readlink "$alias")" != "$target" ]; then
+			log "refusing to replace unexpected $alias"
+			return 1
+		fi
+	else
+		ln -s "$target" "$alias"
+	fi
+	printf '%s\n' "$target" >"$state_file"
+	log "prepared $alias -> $target"
+}
+
+remove_alias() {
+	[ -r "$state_file" ] || return 0
+	target=$(cat "$state_file")
+	if [ -L "$alias" ] && [ "$(readlink "$alias")" = "$target" ]; then
+		rm -f "$alias"
+	fi
+	rm -f "$state_file"
+}
+
+case ${1:-start} in
+start)
+	prepare_alias
+	;;
+stop)
+	remove_alias
+	;;
+status)
+	if [ -L "$alias" ]; then
+		printf 'uio=%s\n' "$(readlink "$alias")"
+	else
+		printf 'uio=\n'
+	fi
+	;;
+*)
+	echo "usage: ${0##*/} {start|stop|status}" >&2
+	exit 2
+	;;
+esac
