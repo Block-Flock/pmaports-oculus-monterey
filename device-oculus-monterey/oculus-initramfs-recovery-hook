@@ -49,6 +49,14 @@ if [ -r "$pidfile" ]; then
 	rm -f "$pidfile"
 fi
 
+# Create correctly addressed pmOS boot/root mappings before the generic
+# initramfs code attempts its loop-device path. Failure remains recoverable:
+# the watchdog and optional USB shell below still come up.
+mapper=${OCULUS_SUBPARTITION_MAPPER:-/sbin/oculus-map-pmos-subpartitions}
+if [ -x "$mapper" ] && ! "$mapper"; then
+	echo "Monterey subpartition mapping failed; recovery remains active" >"$kmsg"
+fi
+
 (
 	sleep "$timeout"
 	echo "Monterey initramfs timeout; returning to bootloader" >"$kmsg"
@@ -59,13 +67,10 @@ echo "Monterey initramfs recovery watchdog: ${timeout}s" >"$kmsg"
 
 if [ "$force_debug" = true ]; then
 	echo "Monterey forced NCM debug shell before storage discovery" >"$kmsg"
-	(
-		while :; do
-			telnetd -F -b "172.16.42.1:23" -l /bin/sh
-			echo "Monterey telnetd exited; restarting" >"$kmsg"
-			sleep 1
-		done
-	) &
+	# BusyBox telnetd's login/PTY path closes immediately on this downstream
+	# kernel. nc -lk keeps a persistent USB-only listener and directly executes
+	# the argument-discarding debug wrapper for each connection.
+	nc -lk -s 172.16.42.1 -p 23 -e /sbin/oculus-debug-login &
 	while :; do
 		sleep 5
 	done

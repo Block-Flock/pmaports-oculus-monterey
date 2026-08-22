@@ -19,8 +19,10 @@ Expected chain:
    starts the external pmOS initramfs.
 3. USB CDC-NCM exposes `172.16.42.1` for recovery and diagnostics, while a
    bounded watchdog is armed.
-4. UFS exposes the Android partition table, including `system_b`.
-5. pmOS loop-maps the two-partition GPT stored inside `system_b`.
+4. An explicit `mdev` scan creates nodes for the UFS Android partition table,
+   including `system_b`; the stock kernel does not provide devtmpfs.
+5. The Monterey hook validates the 512-byte GPT extents stored inside the
+   4096-byte-sector `system_b` device and maps them with `dm-linear`.
 6. The UUIDs embedded in the boot command line select `pmOS_boot` and
    `pmOS_root`, the watchdog is cancelled, then OpenRC starts the installed
    system and keeps NCM plus SSH available.
@@ -32,22 +34,30 @@ cat /proc/cmdline
 cat /proc/partitions
 find /dev/disk/by-partlabel -maxdepth 1 -type l -ls
 blkid
-losetup -a
+dmsetup ls --tree
+dmsetup table oculus-pmos-boot
+dmsetup table oculus-pmos-root
 mount
 cat /etc/os-release
 ```
 
-The expected root filesystem must be mounted from the loop subpartition inside
-`system_b`, not Android's `dm-0`. Keep the exact `boot_b` and `system_b` backup
-hashes outside the repository. Never write `abl`, `xbl`, or another boot-chain
-partition.
+The expected root filesystem must be mounted from
+`/dev/mapper/oculus-pmos-root`, whose linear extent is inside `system_b`, not
+Android's verified-root `dm-0`. The 512-byte loop-sector override is not a
+fallback on this downstream kernel: although it parses the GPT, live testing
+showed out-of-range I/O, while the equivalent read-only linear mapping mounted
+the ext4 filesystem successfully. Keep the exact `boot_b` and `system_b`
+backup hashes outside the repository. Never write `abl`, `xbl`, or another
+boot-chain partition.
 
 At any pmOS shell, root can return directly to the bootloader with
 `oculus-reboot-bootloader`. From the authenticated host control path, use
 `scripts/oculus-usb-control reboot-bootloader`. The helper issues Linux
 `RESTART2("bootloader")`, which Monterey's Qualcomm restart driver maps to the
 bootloader restart reason. A debug-shell image automatically does this after
-five minutes unless boot continues successfully.
+five minutes unless boot continues successfully. Connect to that bounded,
+USB-only root shell with `nc 172.16.42.1 23`; it is not enabled in a normal
+image.
 
 ## 2. Display, GPU, and refresh rate
 

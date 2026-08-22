@@ -4,10 +4,11 @@ This is an early downstream-kernel port for the original Oculus Quest. It is
 not yet a complete Android replacement image and it does not alter the boot
 chain.
 
-The current verified milestone is a diagnosable Linux initramfs with stable USB
-NCM enumeration. UFS/rootfs handoff, framebuffer output, Wi-Fi, Bluetooth
-controllers, audio, sensors, tracking, passthrough, and a VR desktop remain
-separate validation milestones until they pass on-device tests.
+The current verified milestone is a root Linux initramfs shell over stable USB
+NCM, with UFS block discovery and a read-only mount of the embedded pmOS root
+filesystem proven on-device. The matching normal rootfs handoff, visible
+framebuffer output, Wi-Fi, Bluetooth, audio, tracking, passthrough, and a VR
+desktop remain separate validation milestones until they pass on-device tests.
 
 ## Display rate
 
@@ -58,11 +59,15 @@ the pmOS ramdisk even when that ramdisk is present.
 
 Android slot selection normally maps `system_b` directly as the root
 filesystem. A pmOS system image instead places a small GPT inside `system_b`:
-partition 1 is `pmOS_boot` and partition 2 is `pmOS_root`. The pmOS initramfs
-finds `system_b`, creates a loop device with partition scanning enabled, finds
-the embedded filesystem UUIDs, and mounts `pmOS_root`. The boot image and
-system image must therefore come from the same `pmbootstrap install`; mixing
-artifacts from different installs leaves UUIDs that cannot match.
+partition 1 is `pmOS_boot` and partition 2 is `pmOS_root`. This stock kernel
+reports UFS with 4096-byte logical sectors and has no devtmpfs filesystem,
+while the embedded GPT uses 512-byte LBAs. Its old loop driver misaddresses I/O
+when asked to override that sector size. The device initramfs hook therefore
+runs an explicit `mdev` scan and creates validated, 4096-aligned `dm-linear`
+mappings for the two GPT extents before generic pmOS root discovery. It checks
+the physical bounds and the `pmOS_boot`/`pmOS_root` labels before continuing.
+The boot image and system image must come from the same `pmbootstrap install`;
+mixing artifacts from different installs leaves UUIDs that cannot match.
 
 The stock tracking and passthrough stack is not a single kernel toggle. It uses
 the built-in SyncBoss and camera drivers together with Android-specific sensor
@@ -144,8 +149,9 @@ key could make a locally rebuilt payload trusted by the stock bootloader.
 Once pmOS reaches its normal initramfs hook stage, it arms a five-minute
 recovery watchdog. For a bounded bring-up session, add `--debug-shell`; this
 puts `oculus.force-debug` at the front of Monterey's primary command-line field
-and holds the image at a root telnet shell on `172.16.42.1:23`. Run
-`/usr/sbin/oculus-reboot-bootloader` to return immediately. Otherwise, the
+and holds the image at a root TCP shell on `172.16.42.1:23`. Connect from the
+host with `nc 172.16.42.1 23`. Run `/usr/sbin/oculus-reboot-bootloader` to
+return immediately. Otherwise, the
 watchdog automatically returns the headset to its bootloader rather than
 leaving it stuck in initramfs. Set `oculus.recovery_timeout=SECONDS` on the
 kernel command line to choose 30-1800 seconds; zero explicitly disables it.

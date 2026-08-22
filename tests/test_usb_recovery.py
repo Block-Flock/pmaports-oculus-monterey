@@ -15,6 +15,12 @@ SERVICE = ROOT / "device-oculus-monterey" / "oculus-usb-recovery"
 INITRAMFS_HOOK = (
     ROOT / "device-oculus-monterey" / "oculus-initramfs-recovery-hook"
 )
+DEBUG_LOGIN = (
+    ROOT / "device-oculus-monterey" / "oculus-initramfs-debug-login"
+)
+SUBPARTITION_MAPPER = (
+    ROOT / "device-oculus-monterey" / "oculus-map-pmos-subpartitions"
+)
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -94,10 +100,36 @@ class UsbRecoveryTest(unittest.TestCase):
             self.assertEqual(pidfile.read_text(), f"{os.getpid()}\n")
             self.assertIn("already armed", kmsg.read_text())
 
-    def test_forced_telnet_is_supervised_in_foreground(self) -> None:
+    def test_forced_debug_uses_persistent_busybox_nc(self) -> None:
         hook = INITRAMFS_HOOK.read_text()
-        self.assertIn('telnetd -F -b "172.16.42.1:23" -l /bin/sh', hook)
-        self.assertIn("Monterey telnetd exited; restarting", hook)
+        self.assertIn(
+            "nc -lk -s 172.16.42.1 -p 23 -e /sbin/oculus-debug-login",
+            hook,
+        )
+        self.assertNotIn("telnetd ", hook)
+
+    def test_debug_login_discards_listener_arguments(self) -> None:
+        login = DEBUG_LOGIN.read_text()
+        self.assertIn("exec /bin/sh -l", login)
+        self.assertNotIn('"$@"', login)
+
+    def test_initramfs_maps_512_byte_gpt_with_dm_linear(self) -> None:
+        mapper = SUBPARTITION_MAPPER.read_text()
+        self.assertIn('"$mdev_command" -s', mapper)
+        self.assertIn("OCULUS_SYSTEM_DEVICE", mapper)
+        self.assertIn('PARTNAME=system_b', mapper)
+        self.assertIn('dmsetup create "$name" --table', mapper)
+        self.assertIn("start % 8", mapper)
+        self.assertIn("length % 8", mapper)
+        self.assertIn('LABEL=\"pmOS_boot\"', mapper)
+        self.assertIn('LABEL=\"pmOS_root\"', mapper)
+
+    def test_storage_mapping_precedes_debug_listener(self) -> None:
+        hook = INITRAMFS_HOOK.read_text()
+        self.assertLess(
+            hook.index('oculus-map-pmos-subpartitions'),
+            hook.index('nc -lk -s 172.16.42.1'),
+        )
 
 
 if __name__ == "__main__":

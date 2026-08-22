@@ -1,0 +1,5 @@
+#!/bin/busybox ash
+
+# Keep listener arguments away from ash. This debug-only wrapper intentionally
+# enters an initramfs root shell and is present only on the USB NCM link.
+exec /bin/sh -l

@@ -1,0 +1,123 @@
+#!/bin/busybox ash
+
+# Monterey's stock 4.4 kernel reports the UFS LUN at 4096-byte logical
+# sectors. postmarketOS images contain a GPT whose LBAs are 512-byte sectors.
+# This kernel's loop driver can parse that GPT with --sector-size 512, but it
+# then submits partition I/O at the wrong offsets. Map the two aligned GPT
+# extents explicitly through device-mapper instead.
+
+kmsg=${OCULUS_KMSG_PATH:-/dev/kmsg}
+sys_class_block=${OCULUS_SYS_CLASS_BLOCK:-/sys/class/block}
+dev_root=${OCULUS_DEV_ROOT:-/dev}
+mdev_command=${OCULUS_MDEV:-mdev}
+
+log() {
+	printf '%s\n' "$*" >"$kmsg" 2>/dev/null || printf '%s\n' "$*" >&2
+}
+
+# The downstream kernel has CONFIG_DEVTMPFS disabled. Populate UFS and other
+# device nodes before looking for system_b.
+"$mdev_command" -s
+
+system_device=${OCULUS_SYSTEM_DEVICE:-}
+if [ -z "$system_device" ]; then
+	for block_path in "$sys_class_block"/*; do
+		[ -r "$block_path/uevent" ] || continue
+		if grep -q '^PARTNAME=system_b$' "$block_path/uevent"; then
+			system_device="$dev_root/$(basename "$block_path")"
+			break
+		fi
+	done
+fi
+
+if [ -z "$system_device" ] || [ ! -b "$system_device" ]; then
+	log "Monterey subpartition mapper: system_b is unavailable"
+	exit 1
+fi
+
+layout=$(fdisk -l "$system_device" 2>/dev/null)
+boot_extent=$(printf '%s\n' "$layout" | awk '$1 == 1 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $2, $3; exit }')
+root_extent=$(printf '%s\n' "$layout" | awk '$1 == 2 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $2, $3; exit }')
+
+if [ -z "$boot_extent" ] || [ -z "$root_extent" ]; then
+	log "Monterey subpartition mapper: system_b does not contain the expected two-partition GPT"
+	exit 1
+fi
+
+system_bytes=$(blockdev --getsize64 "$system_device") || exit 1
+created=""
+
+create_mapping() {
+	name=$1
+	label=$2
+	extent=$3
+	set -- $extent
+	start=$1
+	end=$2
+	length=$((end - start + 1))
+
+	# dm-linear uses 512-byte sectors. Require 4096-byte alignment for every
+	# boundary and reject an extent outside the physical system_b partition.
+	if [ "$start" -lt 0 ] || [ "$length" -le 0 ] || \
+	    [ $((start % 8)) -ne 0 ] || [ $((length % 8)) -ne 0 ] || \
+	    [ $(((end + 1) * 512)) -gt "$system_bytes" ]; then
+		log "Monterey subpartition mapper: refusing invalid $label extent"
+		return 1
+	fi
+
+	if dmsetup info "$name" >/dev/null 2>&1; then
+		log "Monterey subpartition mapper: $name already exists"
+		return 0
+	fi
+
+	if ! dmsetup create "$name" --table "0 $length linear $system_device $start"; then
+		log "Monterey subpartition mapper: failed to create $name"
+		return 1
+	fi
+	created="$created $name"
+	return 0
+}
+
+cleanup_created() {
+	for name in $created; do
+		dmsetup remove "$name" 2>/dev/null || true
+	done
+}
+
+create_mapping oculus-pmos-boot pmOS_boot "$boot_extent" || {
+	cleanup_created
+	exit 1
+}
+create_mapping oculus-pmos-root pmOS_root "$root_extent" || {
+	cleanup_created
+	exit 1
+}
+
+"$mdev_command" -s
+mkdir -p "$dev_root/mapper"
+for name in oculus-pmos-boot oculus-pmos-root; do
+	for dm_path in "$sys_class_block"/dm-*; do
+		[ -r "$dm_path/dm/name" ] || continue
+		[ "$(cat "$dm_path/dm/name")" = "$name" ] || continue
+		ln -sf "../$(basename "$dm_path")" "$dev_root/mapper/$name"
+	done
+done
+
+case $(blkid "$dev_root/mapper/oculus-pmos-boot" 2>/dev/null) in
+*'LABEL="pmOS_boot"'*) ;;
+*)
+	log "Monterey subpartition mapper: boot label verification failed"
+	cleanup_created
+	exit 1
+	;;
+esac
+case $(blkid "$dev_root/mapper/oculus-pmos-root" 2>/dev/null) in
+*'LABEL="pmOS_root"'*) ;;
+*)
+	log "Monterey subpartition mapper: root label verification failed"
+	cleanup_created
+	exit 1
+	;;
+esac
+
+log "Monterey subpartition mapper: pmOS_boot and pmOS_root ready"
