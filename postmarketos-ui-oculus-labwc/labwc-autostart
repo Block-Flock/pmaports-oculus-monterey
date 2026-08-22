@@ -5,3 +5,7 @@
 if command -v foot >/dev/null 2>&1; then
 	foot --title="Monterey recovery console" &
 fi
+
+# The setup tool creates the enable marker only after it has updated the PAM
+# password successfully. Without that marker the desktop remains accessible.
+oculus-pattern-lock --daemonize &

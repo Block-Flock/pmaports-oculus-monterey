@@ -1,7 +1,7 @@
 # Reference: https://postmarketos.org/uipkg
 pkgname=postmarketos-ui-oculus-labwc
 pkgver=1
-pkgrel=2
+pkgrel=3
 pkgdesc="Recoverable labwc desktop and nested KWin VR launcher for Oculus Quest 1"
 url="https://github.com/un-simp/pmaports-oculus-monterey"
 arch="aarch64"
@@ -15,6 +15,7 @@ depends="
 	dbus
 	device-oculus-monterey
 	font-dejavu
+	gtklock-oculus-pattern
 	kwin-oculus-monterey
 	labwc
 	monado-oculus-monterey
@@ -84,7 +85,7 @@ sha512sums="
 ba7925ff24b5bb7dcbeeb86b3861a31248910eeda692e8d086838017d82e73fab27eead843838a292e3bbf9c23e6a271f7345b7338c429a97bf7195683497063  oculus-vr-run
 76bfdb54da73708e5cd0cb8f3a1e613fe8f60f450e180d5927c727d5bc5ce5b0a8c84cbd246b416695c9b09c2cd086d6992a798c80ba9d302c0e862aaf746b72  oculus-labwc.desktop
 021d0a6eb9290fdb93f074fa5694527e843d1a465d43047d98eeb58ee11aebaf87a6919a5dcbabbc48d132e9286ca4d86ac6d24ce5a966fd4efa510a130dea31  xorg-oculus-fbdev.conf
-de268d30bd769b9d338b16379982fe19c277c066f84c4da376c8b3b6bd622ded523f976b6c83a20863b6b1a1c0bb5edb88257a454fc42ae850e8db4e3c0fa83f  labwc-autostart
+3a07c68ac8ef85329eedb976b302f2cc6b9814d2a2eee7935eb754c68b5463f59ee786a268c4e05c53ff2a3bd23ecb7ca59fd32f6e5c4b28f570a326805ba80b  labwc-autostart
 9a9993439f7e8fe31ab5f6fae2ebf31f8ba1465337505d87c14598a6d0162f4397d8dc6ec572082068d5268fd7904ba117bf2dae60d72cd55236296c5ffd983f  labwc-environment
 79549171e41252297d3cbc6e79495b325237586ad37c8ddfafb69a40d3b1faebcb9a1e5d118e441920188ea6471a9f635f76482f082b526c927c69acdad7b917  labwc-menu.xml
 3de4ed5517a0c54917a589249b90747ca5352acd305f2a1ed827fd63ebbdfa30609ee95b395e106af02cd8eb71960dc033019be0c93d4a480163a67ae13f7f65  labwc-rc.xml

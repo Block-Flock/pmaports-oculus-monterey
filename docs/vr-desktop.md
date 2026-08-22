@@ -53,6 +53,35 @@ oculus-vr-run APPLICATION  # start an application inside KWin VR
 oculus-vr stop
 ```
 
+## Pattern login
+
+The labwc session includes an optional 3x3 pattern lock built on gtklock's
+`ext-session-lock-v1` support. Point at a dot, hold the primary controller
+trigger, draw across at least four unique dots, and release to submit. Mouse
+and touch input exercise the same path during bring-up. The normal masked PAM
+password field remains available as a keyboard fallback.
+
+Enable it from an authenticated recovery shell:
+
+```sh
+sudo oculus-pattern-setup enable
+```
+
+The prompt accepts the dot numbers `1` through `9`, read left-to-right and
+top-to-bottom, twice without echoing them. Straight lines automatically include
+a skipped middle dot, matching the on-screen gesture. The tool changes the Unix password of the
+`user` account to that sequence and creates the enable marker only after
+`chpasswd` succeeds. This means the pattern also becomes that account's Unix
+password and has less entropy than a normal password; use SSH keys and do not
+expose password SSH authentication to an untrusted network. Disable automatic
+locking with `sudo oculus-pattern-setup disable`; disabling does not revert the
+password.
+
+The lock screen also exposes a two-press, five-second-confirmation bootloader
+reboot button. Its command is restricted by the same passwordless sudo policy
+as the desktop recovery menu. Pattern login remains off by default so a bad UI
+build cannot lock the owner out before USB recovery has been tested.
+
 KWin VR is not started automatically. Until the Monterey Monado driver works,
 starting it can only exercise the nested compositor and failure diagnostics.
 

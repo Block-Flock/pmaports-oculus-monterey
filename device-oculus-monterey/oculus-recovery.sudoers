@@ -1,5 +1,7 @@
 # Permit an authenticated wheel user to request only bounded device controls.
 Cmnd_Alias OCULUS_CONTROLS = /usr/sbin/oculus-reboot-bootloader, \
+	/usr/sbin/oculus-pattern-setup enable, \
+	/usr/sbin/oculus-pattern-setup disable, \
     /usr/sbin/oculus-refresh-rate status, \
     /usr/sbin/oculus-refresh-rate 72, \
     /usr/sbin/oculus-refresh-rate 90, \

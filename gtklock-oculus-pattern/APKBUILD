@@ -1,0 +1,56 @@
+pkgname=gtklock-oculus-pattern
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Controller-friendly pattern module for the Oculus Monterey lock screen"
+url="https://github.com/un-simp/pmaports-oculus-monterey"
+arch="aarch64"
+license="GPL-3.0-or-later AND MIT"
+depends="gtklock sudo-rs"
+makedepends="gtk+3.0-dev"
+source="
+	gtklock-module.h
+	oculus-pattern-core.c
+	oculus-pattern-core.h
+	oculus-pattern-module.c
+	oculus-pattern-normalize.c
+	oculus-pattern-lock
+	oculus-pattern-setup
+	oculus-pattern.css
+	"
+options="!check"
+
+build() {
+	$CC $CPPFLAGS $CFLAGS -fPIC -shared $LDFLAGS \
+		$(pkg-config --cflags --libs gtk+-3.0 gmodule-2.0) \
+		-o gtklock-oculus-pattern.so \
+		"$srcdir"/oculus-pattern-module.c \
+		"$srcdir"/oculus-pattern-core.c
+	$CC $CPPFLAGS $CFLAGS $LDFLAGS \
+		-o oculus-pattern-normalize \
+		"$srcdir"/oculus-pattern-normalize.c \
+		"$srcdir"/oculus-pattern-core.c
+}
+
+package() {
+	install -Dm755 gtklock-oculus-pattern.so \
+		"$pkgdir"/usr/lib/gtklock/gtklock-oculus-pattern.so
+	install -Dm755 "$srcdir"/oculus-pattern-lock \
+		"$pkgdir"/usr/bin/oculus-pattern-lock
+	install -Dm755 "$srcdir"/oculus-pattern-setup \
+		"$pkgdir"/usr/sbin/oculus-pattern-setup
+	install -Dm755 oculus-pattern-normalize \
+		"$pkgdir"/usr/libexec/oculus-pattern-normalize
+	install -Dm644 "$srcdir"/oculus-pattern.css \
+		"$pkgdir"/usr/share/oculus-monterey/pattern-lock.css
+}
+
+sha512sums="
+135a0fd10e4b1d4f18802f5952e20c4d95457ced0ce5230b49e15769f910a1c78ab6b8563c1d4e9288b7e0513873b9d0fe37b0b028110eefaf3cf5e30aa32db3  gtklock-module.h
+81ac1a8a6002b878301bfcc71d74d95d0a30d7071a69d697f5328297f334b512dcd28ff197a86051a9b4a51c9943dcc4a8b83d75c64195b91b508fea212d2e16  oculus-pattern-core.c
+7dfcb0eb9c24b3e1b13f81365737ab2bd3bed18644b4e9222adb633ae875c024fe6f2296a8245d9a9d7736baea64fa7574d08bd62dda188091bc232dd10f2c42  oculus-pattern-core.h
+366d5a5ed1628fdbc1cf883e7511e1822b4ffca7ce787d2152ce9dfe16592d1c96b0a864655717693fb706167d711a05c51517e7158e9c132b4aa51c11d6b6ef  oculus-pattern-module.c
+6711304cabf1ffa9b2d94e4ab70a4851b48d7bfc6901e365b42ea43539e2fd6b2571250c92ced423d1934b6ce810c38560f1801712cefc04f6f70a8b090bd13e  oculus-pattern-normalize.c
+d4e229f68d39a85a16b3865d9e3f687601343fa3d86ea2222113d548abb18080a06dba370f413210a838c6483cc49861ab805f69e4ceb4d504b214df3464167b  oculus-pattern-lock
+7bb975d970cdb876303f794ec52eb369516b1108edfeaeea43dd207c587187f0cc3d33186fb4d562230a929af60ebb44a7295fed5ab273f5b2e7fda5a0b3a808  oculus-pattern-setup
+1f2360c7068e377da436d33733b52e84f75246c1404c0722eeb31b91f953e193e9720eb3045a89fdbd58277051de39387f0310a8538192ecea4fc4e3fb75624e  oculus-pattern.css
+"

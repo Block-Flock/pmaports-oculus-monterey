@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+enabled=/etc/oculus-monterey/pattern-login.enabled
+[ -e "$enabled" ] || exit 0
+
+exec gtklock "$@" \
+	--module=/usr/lib/gtklock/gtklock-oculus-pattern.so \
+	--style=/usr/share/oculus-monterey/pattern-lock.css
