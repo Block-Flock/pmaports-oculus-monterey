@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+
+description="Oculus Quest USB recovery network"
+supervisor=supervise-daemon
+command=/usr/sbin/oculus-usb-recovery
+respawn_delay=1
+respawn_max=0
+
+depend() {
+	need localmount
+	after udev
+	before sshd
+}
+

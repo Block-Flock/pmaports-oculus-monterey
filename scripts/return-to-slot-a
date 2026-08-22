@@ -1,0 +1,21 @@
+#!/bin/sh
+# Recovery helper for a failed slot-B test. It changes only the active slot.
+
+set -eu
+
+devices=$(fastboot devices | awk 'NF { print $1 }')
+[ "$(printf '%s\n' "$devices" | wc -l)" -eq 1 ] || {
+	echo "exactly one fastboot device must be connected" >&2
+	exit 69
+}
+serial=$devices
+if [ -n "${MONTEREY_SERIAL:-}" ] && [ "$serial" != "$MONTEREY_SERIAL" ]; then
+	echo "connected serial does not match MONTEREY_SERIAL" >&2
+	exit 69
+fi
+fastboot -s "$serial" getvar product 2>&1 | grep -q 'product: monterey' || {
+	echo "put Monterey in fastboot mode, then retry" >&2
+	exit 69
+}
+fastboot -s "$serial" set_active a
+fastboot -s "$serial" reboot

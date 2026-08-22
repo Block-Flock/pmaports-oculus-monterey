@@ -3,7 +3,7 @@
 maintainer=""
 pkgname=linux-oculus-monterey
 pkgver=4.4.205
-pkgrel=1
+pkgrel=3
 _commit=6929f734ce0e602018790ff3a52dc7bad646af60
 pkgdesc="Oculus Quest 1 kernel fork"
 arch="aarch64"
@@ -14,15 +14,19 @@ makedepends="
 	bc
 	bison
 	devicepkg-dev
-	findutils
 	flex
+	gcc4
 	openssl-dev
 	perl
 	"
-	source="
+source="
 	$pkgname-$_commit.tar.gz::https://github.com/facebookincubator/oculus-linux-kernel/archive/$_commit.tar.gz
 	config-${pkgname#linux-}.$arch
 	90hz-default-v2.patch
+	honor-pmos-initramfs.patch
+	drop-missing-internal-kconfig.patch
+	fix-dtc-yylloc.patch
+	fix-old-dtc-warning-flags.patch
 	"
 builddir="$srcdir/oculus-linux-kernel-$_commit"
 options="
@@ -32,8 +36,19 @@ options="
 	pmb:cross-native
 	"
 _outdir="out"
+_config="config-${pkgname#linux-}.$arch"
 
 _carch="arm64"
+
+# This downstream 4.4 tree was built by Oculus with GCC 4.9.  Kernels built
+# with current GCC reach neither initramfs nor a usable debug transport on the
+# Quest 1, while the stock GCC 4.9 kernel does.  Use pmaports' maintained GCC 4
+# cross-toolchain, as done by other old downstream kernel packages.
+if [ "${CC:0:5}" != "gcc4-" ]; then
+	CC="gcc4-$CC"
+	HOSTCC="gcc4-gcc"
+	CROSS_COMPILE="gcc4-$CROSS_COMPILE"
+fi
 
 # Used internally by pmbootstrap. Don't touch.
 # TODO: Remove once minimum default pmbootstrap version supports
@@ -42,6 +57,8 @@ _flavor="${pkgname#linux-}"
 
 prepare() {
 	default_prepare
+	sed -i '/^obj-y[[:space:]]*+=[[:space:]]*internal\/$/d' \
+		drivers/staging/oculus/Makefile
 	. downstreamkernel_prepare
 }
 
@@ -58,6 +75,10 @@ package() {
 
 sha512sums="
 535201edc88b0202a32831f9a2542e692067ef96313648d3357ff28f77e5f483f6b25a498a955c0394949d51597db19cd39c5c90f114ae33265deb2d5c114e58  linux-oculus-monterey-6929f734ce0e602018790ff3a52dc7bad646af60.tar.gz
-f81859de2c0f70dd219309bec5fa9ae3c1baf2ca2e643cf3f6f09a5256401641541fdc5520e8628428da3413d414e82f70809e2b5491e12342b5c177b56aec41  config-oculus-monterey.aarch64
+5de34e20a345c0c083c3d5b517383ca762a61cee57a8926b8e21bb23a6247d4a759adea67762991f46a5ca4dab1ca26e234504c30dcc3b805a555586a81003a5  config-oculus-monterey.aarch64
 1ed6cc279ff3275a4d1c7917c2f8d6e620d4486f4545e30ac47356459cff89521016e0a2fa21694de30a9dbfce25d3b31794d8037ddc7d64b8757ba1093072cf  90hz-default-v2.patch
+602a5de4b3cc17831690a8ebafac88834634bbd9e824eb45347b76444dcdc1f1d367d96e897554887181d89dd119a0b515e205171468f742796f51faaf054b92  honor-pmos-initramfs.patch
+2278266f4046405e796283165977f9e96ef0fc7f92bb0dafee0d85c6037e0b8d63d02387e13a22b135270923c97f569bc81905f74e72a36498987aee396afd80  drop-missing-internal-kconfig.patch
+07695e8a669abf66660a0749935c84e5813578e05b7b6d6f64e8dcebda0d701a07db5233147aa0e8b80cd7b830fdd5004599c66422a2a4368a10e8719af7c806  fix-dtc-yylloc.patch
+5562d2af0affe6c1289ab96d84791cc6cbb8f72ba833c5445df1b168d9910c45b006aabebe45ace6e2a66ae753abfd9b8b2f542f4835d2759d43d10a5097e6f9  fix-old-dtc-warning-flags.patch
 "

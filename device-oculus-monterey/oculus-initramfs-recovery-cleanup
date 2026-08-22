@@ -1,0 +1,11 @@
+#!/bin/busybox ash
+
+if [ -r /run/oculus-initramfs-watchdog.pid ]; then
+	pid=$(cat /run/oculus-initramfs-watchdog.pid)
+	case "$pid" in
+	''|*[!0-9]*) ;;
+	*) kill "$pid" 2>/dev/null || true ;;
+	esac
+	rm -f /run/oculus-initramfs-watchdog.pid
+fi
+

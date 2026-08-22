@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Build a pmOS boot image around a user-supplied Monterey stock kernel.
+
+The public Oculus kernel tree is missing drivers/staging/oculus/internal.
+This tool therefore keeps the kernel and DTBs from an authentic Quest 1 boot
+image supplied by the user, changes the kernel's single skip_initramfs setup
+token so the external pmOS ramdisk is honored, and optionally changes only the
+Lightman panel's default/maximum refresh rate.  It then inserts the ramdisk and
+command line from a raw pmbootstrap boot.img and recreates Monterey's legacy
+BootSignature container.
+
+No proprietary input is embedded in this script.  The resulting signature is
+not cryptographically valid; this is only for an already-unlocked Quest 1.
+This tool never accesses or flashes a device.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import os
+import struct
+import tempfile
+import zlib
+from pathlib import Path
+
+
+BOOT_MAGIC = b"ANDROID!"
+BOOT_PAGE_SIZE = 4096
+BOOT_SIGNATURE_SIZE = 4096
+BOOT_TARGET_DER = b"\x13\x05/boot\x02\x04"
+FDT_MAGIC = 0xD00DFEED
+FDT_BEGIN_NODE = 1
+FDT_END_NODE = 2
+FDT_PROP = 3
+FDT_NOP = 4
+FDT_END = 9
+LIGHTMAN_NODE = (
+    "/soc/qcom,mdss_mdp@c900000/"
+    "qcom,mdss_dsi_sdc_lightman_video"
+)
+RATE_PROPERTIES = {
+    "qcom,mdss-dsi-min-refresh-rate": None,
+    "qcom,mdss-dsi-max-refresh-rate": "selected",
+    "qcom,mdss-dsi-panel-framerate": "selected",
+}
+
+
+class ImageError(ValueError):
+    pass
+
+
+def align(value: int, size: int = BOOT_PAGE_SIZE) -> int:
+    return (value + size - 1) // size * size
+
+
+def read_boot(data: bytes, label: str) -> dict[str, object]:
+    if len(data) < BOOT_PAGE_SIZE or data[:8] != BOOT_MAGIC:
+        raise ImageError(f"{label}: not an Android boot image")
+    kernel_size = struct.unpack_from("<I", data, 8)[0]
+    ramdisk_size = struct.unpack_from("<I", data, 16)[0]
+    second_size = struct.unpack_from("<I", data, 24)[0]
+    page_size = struct.unpack_from("<I", data, 36)[0]
+    header_version = struct.unpack_from("<I", data, 40)[0]
+    if page_size != BOOT_PAGE_SIZE or header_version != 0:
+        raise ImageError(
+            f"{label}: expected header v0/page 4096, got "
+            f"v{header_version}/page {page_size}"
+        )
+
+    kernel_offset = page_size
+    ramdisk_offset = kernel_offset + align(kernel_size, page_size)
+    second_offset = ramdisk_offset + align(ramdisk_size, page_size)
+    logical_end = second_offset + align(second_size, page_size)
+    if logical_end > len(data):
+        raise ImageError(f"{label}: payload extends beyond the file")
+
+    cmdline = data[64:576].split(b"\0", 1)[0]
+    cmdline += data[608:1632].split(b"\0", 1)[0]
+    return {
+        "kernel": data[kernel_offset : kernel_offset + kernel_size],
+        "ramdisk": data[ramdisk_offset : ramdisk_offset + ramdisk_size],
+        "second": data[second_offset : second_offset + second_size],
+        "cmdline": cmdline,
+        "logical_end": logical_end,
+        "header": data[:page_size],
+    }
+
+
+def cstring(data: bytes | bytearray, offset: int, limit: int) -> str:
+    if not 0 <= offset < limit:
+        raise ImageError("DTB string offset is outside the strings block")
+    end = data.find(b"\0", offset, limit)
+    if end < 0:
+        raise ImageError("unterminated DTB string")
+    return bytes(data[offset:end]).decode("ascii")
+
+
+def patch_lightman_dtb(blob: bytes, selected_rate: int) -> tuple[bytes, int]:
+    dtb = bytearray(blob)
+    if len(dtb) < 40:
+        raise ImageError("truncated DTB header")
+    (
+        magic,
+        total_size,
+        struct_offset,
+        strings_offset,
+        _reserve_offset,
+        version,
+        _last_compatible,
+        _boot_cpu,
+        strings_size,
+        struct_size,
+    ) = struct.unpack_from(">10I", dtb, 0)
+    if magic != FDT_MAGIC or total_size != len(dtb) or version < 17:
+        raise ImageError("unexpected DTB header")
+    struct_end = struct_offset + struct_size
+    strings_end = strings_offset + strings_size
+    if struct_end > len(dtb) or strings_end > len(dtb):
+        raise ImageError("DTB blocks extend beyond totalsize")
+
+    offset = struct_offset
+    nodes: list[str] = []
+    found: dict[str, int] = {}
+    while offset + 4 <= struct_end:
+        token = struct.unpack_from(">I", dtb, offset)[0]
+        offset += 4
+        if token == FDT_BEGIN_NODE:
+            end = dtb.find(b"\0", offset, struct_end)
+            if end < 0:
+                raise ImageError("unterminated DTB node name")
+            nodes.append(bytes(dtb[offset:end]).decode("ascii"))
+            offset = align(end + 1, 4)
+        elif token == FDT_END_NODE:
+            if not nodes:
+                raise ImageError("unbalanced DTB END_NODE")
+            nodes.pop()
+        elif token == FDT_PROP:
+            if offset + 8 > struct_end:
+                raise ImageError("truncated DTB property")
+            length, name_offset = struct.unpack_from(">II", dtb, offset)
+            offset += 8
+            value_offset = offset
+            offset = align(offset + length, 4)
+            name = cstring(dtb, strings_offset + name_offset, strings_end)
+            path = "/" + "/".join(node for node in nodes if node)
+            if path == LIGHTMAN_NODE and name in RATE_PROPERTIES:
+                if length != 4:
+                    raise ImageError(f"{name}: expected one 32-bit cell")
+                old = struct.unpack_from(">I", dtb, value_offset)[0]
+                found[name] = old
+                if RATE_PROPERTIES[name] == "selected":
+                    struct.pack_into(">I", dtb, value_offset, selected_rate)
+        elif token == FDT_NOP:
+            continue
+        elif token == FDT_END:
+            break
+        else:
+            raise ImageError(f"unknown DTB token {token}")
+
+    missing = set(RATE_PROPERTIES) - set(found)
+    if missing:
+        raise ImageError(f"Lightman DTB is missing: {', '.join(sorted(missing))}")
+    if found["qcom,mdss-dsi-min-refresh-rate"] > selected_rate:
+        raise ImageError("Lightman minimum refresh rate exceeds selected rate")
+    return bytes(dtb), found["qcom,mdss-dsi-min-refresh-rate"]
+
+
+def patch_kernel(stock_kernel: bytes, selected_rate: int) -> tuple[bytes, int, int]:
+    try:
+        stream = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        image = stream.decompress(stock_kernel) + stream.flush()
+    except zlib.error as error:
+        raise ImageError(f"stock kernel is not a valid gzip stream: {error}") from error
+    if image.count(b"skip_initramfs") != 1:
+        raise ImageError("stock Image must contain exactly one skip_initramfs token")
+    image = image.replace(b"skip_initramfs", b"xkip_initramfs")
+
+    tail = stream.unused_data
+    offset = 0
+    count = 0
+    minimums: set[int] = set()
+    patched_dtbs = bytearray()
+    while offset < len(tail):
+        if offset + 8 > len(tail):
+            raise ImageError("truncated appended DTB")
+        magic, size = struct.unpack_from(">II", tail, offset)
+        if magic != FDT_MAGIC or size < 40 or offset + size > len(tail):
+            raise ImageError(f"invalid appended DTB at offset {offset}")
+        patched, minimum = patch_lightman_dtb(
+            tail[offset : offset + size], selected_rate
+        )
+        patched_dtbs.extend(patched)
+        minimums.add(minimum)
+        count += 1
+        offset += size
+    if count == 0:
+        raise ImageError("stock kernel has no appended DTBs")
+    if len(minimums) != 1:
+        raise ImageError("stock DTBs disagree on Lightman minimum refresh rate")
+
+    compressed = gzip.compress(image, compresslevel=9, mtime=0)
+    return compressed + patched_dtbs, count, minimums.pop()
+
+
+def prioritize_pmos_cmdline(cmdline: bytes, debug_shell: bool) -> bytes:
+    """Keep pmOS boot selectors in header v0's reliable primary field."""
+    words = cmdline.split()
+    pmos = [word for word in words if word.startswith((b"pmos", b"PMOS"))]
+    platform = [word for word in words if word not in pmos]
+    if debug_shell:
+        pmos.insert(0, b"oculus.force-debug")
+    result = b" ".join(pmos + platform)
+    if len(b" ".join(pmos)) > 511:
+        raise ImageError("pmOS boot selectors exceed the primary cmdline field")
+    return result
+
+
+def extract_signature(template: bytes, logical_end: int) -> bytearray:
+    if len(template) != logical_end + BOOT_SIGNATURE_SIZE:
+        raise ImageError("stock boot must end with one 4096-byte signature page")
+    signature = bytearray(template[logical_end:])
+    if signature[:2] != b"\x30\x82":
+        raise ImageError("stock signature page is not DER")
+    marker = signature.find(BOOT_TARGET_DER)
+    if marker < 0 or signature.find(BOOT_TARGET_DER, marker + 1) >= 0:
+        raise ImageError("stock signature must contain one DER /boot length field")
+    return signature
+
+
+def padded(data: bytes) -> bytes:
+    return data + bytes(align(len(data)) - len(data))
+
+
+def write_atomic(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def build(
+    pmos_path: Path,
+    stock_path: Path,
+    output_path: Path,
+    rate: int,
+    debug_shell: bool = False,
+) -> None:
+    pmos_data = pmos_path.read_bytes()
+    stock_data = stock_path.read_bytes()
+    pmos = read_boot(pmos_data, "pmbootstrap boot")
+    stock = read_boot(stock_data, "stock boot")
+    if len(pmos_data) != pmos["logical_end"]:
+        raise ImageError("pmbootstrap boot must be raw and unsigned")
+    if pmos["second"]:
+        raise ImageError("pmbootstrap boot unexpectedly contains a second stage")
+    cmdline = pmos["cmdline"]
+    if b"pmos_root_uuid=" not in cmdline or b"pmos_boot_uuid=" not in cmdline:
+        raise ImageError("pmbootstrap command line is missing filesystem UUIDs")
+    if b"oculus.force-debug" in cmdline:
+        raise ImageError("pmbootstrap command line already forces debug shell")
+    # Monterey does not reliably preserve boot header v0's extra_cmdline.
+    # Put pmOS filesystem selectors (and optional recovery selector) first.
+    cmdline = prioritize_pmos_cmdline(cmdline, debug_shell)
+    if len(cmdline) > 1536:
+        raise ImageError("combined kernel command line exceeds 1536 bytes")
+
+    kernel, dtb_count, minimum_rate = patch_kernel(stock["kernel"], rate)
+    ramdisk = pmos["ramdisk"]
+    header = bytearray(stock["header"])
+    struct.pack_into("<I", header, 8, len(kernel))
+    struct.pack_into("<I", header, 16, len(ramdisk))
+    struct.pack_into("<I", header, 24, 0)
+    header[64:576] = bytes(512)
+    header[608:1632] = bytes(1024)
+    header[64 : 64 + min(len(cmdline), 512)] = cmdline[:512]
+    if len(cmdline) > 512:
+        header[608 : 608 + len(cmdline) - 512] = cmdline[512:]
+
+    digest = hashlib.sha1()
+    digest.update(kernel)
+    digest.update(struct.pack("<I", len(kernel)))
+    digest.update(ramdisk)
+    digest.update(struct.pack("<I", len(ramdisk)))
+    digest.update(struct.pack("<I", 0))
+    header[576:608] = digest.digest() + bytes(12)
+
+    payload = bytes(header) + padded(kernel) + padded(ramdisk)
+    signature = extract_signature(stock_data, int(stock["logical_end"]))
+    marker = signature.find(BOOT_TARGET_DER)
+    struct.pack_into(">I", signature, marker + len(BOOT_TARGET_DER), len(payload))
+    output = payload + signature
+    write_atomic(output_path, output)
+
+    print(f"kernel_source={stock_path}")
+    print("kernel_patch=skip_initramfs->xkip_initramfs")
+    print(f"dtb_count={dtb_count}")
+    print(f"lightman_min_hz={minimum_rate}")
+    print(f"lightman_default_hz={rate}")
+    print(f"lightman_max_hz={rate}")
+    print(f"oculus_force_debug={'yes' if debug_shell else 'no'}")
+    print(f"payload_size={len(payload)}")
+    print(f"signature_size={len(signature)}")
+    print(f"output_size={len(output)}")
+    print(f"sha256={hashlib.sha256(output).hexdigest()}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("pmbootstrap_boot", type=Path, help="raw pmbootstrap boot.img")
+    parser.add_argument("stock_boot", type=Path, help="authentic Monterey stock boot.img")
+    parser.add_argument("output", type=Path, help="output boot image")
+    parser.add_argument(
+        "--refresh-rate",
+        type=int,
+        choices=(72, 90),
+        default=90,
+        help="Lightman default/max refresh rate (default: 90)",
+    )
+    parser.add_argument(
+        "--debug-shell",
+        action="store_true",
+        help="force a pre-storage NCM telnet shell (watchdog still applies)",
+    )
+    args = parser.parse_args()
+    try:
+        build(
+            args.pmbootstrap_boot,
+            args.stock_boot,
+            args.output,
+            args.refresh_rate,
+            args.debug_shell,
+        )
+    except (ImageError, OSError, struct.error) as error:
+        parser.error(str(error))
+
+
+if __name__ == "__main__":
+    main()

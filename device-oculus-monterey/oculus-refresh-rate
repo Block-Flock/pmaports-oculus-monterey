@@ -5,9 +5,12 @@
 set -eu
 
 node=/sys/class/graphics/fb0/dynamic_fps
+max_node=/sys/kernel/debug/mdss_panel_fb0/intf0/max_refresh_rate
+mode_node=/sys/class/graphics/fb0/modes
+measured_node=/sys/class/graphics/fb0/measured_fps
 
 usage() {
-	echo "usage: oculus-refresh-rate {72|90|status}" >&2
+	echo "usage: oculus-refresh-rate {72|90|uncapped|status}" >&2
 	exit 64
 }
 
@@ -17,22 +20,70 @@ usage() {
 	exit 69
 }
 
+show_status() {
+	if [ -r "$node" ]; then
+		current=$(cat "$node")
+		[ -n "$current" ] || current="asleep"
+	else
+		current="unavailable"
+	fi
+	if [ -r "$mode_node" ]; then
+		mode=$(cat "$mode_node")
+	else
+		mode="unavailable"
+	fi
+	if [ -r "$measured_node" ]; then
+		measured=$(cat "$measured_node")
+	else
+		measured="unavailable"
+	fi
+	if [ -r "$max_node" ]; then
+		maximum=$(cat "$max_node")
+	else
+		maximum="unavailable"
+	fi
+	printf 'panel-control=%s panel-mode=%s panel-max=%s measured-fps=%s\n' \
+		"$current" "$mode" "$maximum" "$measured"
+}
+
 case "$1" in
 	status)
-		cat "$node"
+		show_status
 		;;
-	72|90)
+	72|90|uncapped)
 		[ "$(id -u)" -eq 0 ] || {
 			echo "must run as root" >&2
 			exit 77
 		}
-		printf '%s\n' "$1" > "$node"
-		actual=$(cat "$node")
-		[ "$actual" = "$1" ] || {
-			echo "requested $1 Hz but driver reports $actual Hz" >&2
-			exit 70
-		}
-		echo "panel now running at $actual Hz"
+		requested=$1
+		if [ "$requested" = uncapped ]; then
+			[ -r "$max_node" ] || {
+				echo "panel maximum is unavailable; cannot select uncapped mode" >&2
+				exit 69
+			}
+			requested=$(cat "$max_node")
+		fi
+		printf '%s\n' "$requested" > "$node"
+		actual=$(cat "$node" 2>/dev/null || true)
+		case "$actual" in
+			"$requested")
+				if [ "$1" = uncapped ]; then
+					echo "panel now using its supported maximum: $actual Hz"
+				else
+					echo "panel now running at $actual Hz"
+				fi
+				;;
+			"")
+				echo "panel is powered off; $1 Hz was not applied" >&2
+				show_status
+				exit 75
+				;;
+			*)
+				echo "requested $requested Hz but driver reports $actual Hz" >&2
+				exit 70
+				;;
+		esac
+		echo "VR compositor FPS is independent; check measured-fps and runtime diagnostics."
 		;;
 	*) usage ;;
 esac

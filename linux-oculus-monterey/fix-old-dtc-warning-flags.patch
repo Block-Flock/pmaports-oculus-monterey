@@ -1,0 +1,16 @@
+From: postmarketOS contributors
+Subject: [PATCH] kbuild: only pass checks supported by bundled dtc
+
+The bundled dtc implements unit_address_vs_reg, avoid_default_addr_size and
+reg_format, but it predates simple_bus_reg and unit_address_format. Passing
+unknown check names is fatal, so omit only the unsupported selectors.
+
+--- a/scripts/Makefile.lib
++++ b/scripts/Makefile.lib
+@@ -279,9 +279,7 @@ ifeq ($(KBUILD_ENABLE_EXTRA_GCC_CHECKS),)
+ DTC_FLAGS += -Wno-unit_address_vs_reg \
+ 	-Wno-avoid_default_addr_size \
+-	-Wno-simple_bus_reg \
+-	-Wno-unit_address_format \
+ 	-Wno-reg_format
+ endif

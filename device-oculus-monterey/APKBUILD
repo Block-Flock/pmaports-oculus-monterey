@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=1
+pkgrel=10
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -12,27 +12,69 @@ depends="
 	linux-oculus-monterey
 	postmarketos-base
 	postmarketos-base-downstream
+	sudo-rs
+	unudhcpd
 	"
-makedepends="devicepkg-dev"
-	source="
+makedepends="
+	devicepkg-dev
+	linux-headers
+	"
+source="
 	deviceinfo
 	modules-initfs
+	oculus-initramfs-recovery-cleanup
+	oculus-initramfs-recovery-hook
+	oculus-initramfs-recovery.files
+	oculus-reboot-bootloader.c
+	oculus-recovery.sudoers
 	oculus-refresh-rate
+	oculus-usb-recovery
+	oculus-usb-recovery.initd
+	oculus-usb-recovery.nmconf
 	"
 options="!archcheck !check"
 
 build() {
 	devicepkg_build $startdir $pkgname
+	$CC $CPPFLAGS $CFLAGS -static $LDFLAGS \
+		-o oculus-reboot-bootloader "$srcdir/oculus-reboot-bootloader.c"
 }
 
 package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm755 "$srcdir/oculus-refresh-rate" \
 		"$pkgdir/usr/sbin/oculus-refresh-rate"
+	install -Dm755 oculus-reboot-bootloader \
+		"$pkgdir/usr/sbin/oculus-reboot-bootloader"
+	install -Dm755 "$srcdir/oculus-usb-recovery" \
+		"$pkgdir/usr/sbin/oculus-usb-recovery"
+	install -Dm755 "$srcdir/oculus-usb-recovery.initd" \
+		"$pkgdir/etc/init.d/oculus-usb-recovery"
+	install -Dm644 "$srcdir/oculus-usb-recovery.nmconf" \
+		"$pkgdir/etc/NetworkManager/conf.d/20-oculus-usb-recovery.conf"
+	install -Dm440 "$srcdir/oculus-recovery.sudoers" \
+		"$pkgdir/etc/sudoers.d/oculus-recovery"
+	install -Dm755 "$srcdir/oculus-initramfs-recovery-hook" \
+		"$pkgdir/usr/share/mkinitfs/hooks/20-oculus-recovery.sh"
+	install -Dm755 "$srcdir/oculus-initramfs-recovery-cleanup" \
+		"$pkgdir/usr/share/mkinitfs/hooks-cleanup/80-oculus-recovery.sh"
+	install -Dm644 "$srcdir/oculus-initramfs-recovery.files" \
+		"$pkgdir/usr/share/mkinitfs/files/20-oculus-recovery.files"
+	mkdir -p "$pkgdir/etc/runlevels/default"
+	ln -s /etc/init.d/oculus-usb-recovery \
+		"$pkgdir/etc/runlevels/default/oculus-usb-recovery"
 }
 
 sha512sums="
-9ba5e026cb2d17c0b88bf901df415ced0b53567da816573b6b45d67893bba6cc2f7d1b941169adcc4f8c523516a257fdc29da9ccc5b239c4818551a8c88eea22  deviceinfo
-e70bae17df23dcaaaea0e2d3616556f04baa23f8ee1357785c0f539bf97282d8ddff53953e155b72689bb73beb38c2da3d08de2a61e866684edfa10a6593885d  modules-initfs
-af54de07cabd99bce71328e2a5cd334650622415f7d100ee476f9db2091df4bc58a2d1651eaddeba9910313a0155edbfab3900a1865689ecb68c419cee7cf019  oculus-refresh-rate
+22b0f9497f473d5e195b7a33bb936837b03acdc4afcef4db6c265dfd432d1309c9c249b47fe43b7e66ef3c360eb44a3d95511214992bad58cf67de9297c6f764  deviceinfo
+986e70b829f868a32250ad39a64fa42918e38ca9ec7d9a62199a402ddda7df17002ac1be8613062d453cdfad382ee404b484ee0fc91a5cbe3c9d9710212880a9  modules-initfs
+771ba9e1003986666e8d094c0c4b706d2c1ba90aa86716f23dfc90a55b09e916786102708943d251141e6052a82dae33a940a0a9f177fec06a4261732fd49f42  oculus-initramfs-recovery-cleanup
+c36581329b13547fbf3e4c77651d84325a22f3d572df1e1466d4f593befab868a94d3a04712e6da922ded8a472349ceb88813fc05c073e2085bea75d9f4e8f21  oculus-initramfs-recovery-hook
+1cc1c291b04d9ef28cd90150d5ebfbfd7eef4d5bc56252053c74bd969ba3454d27e223fded95bc46e61ce746bd8b4af6695e1930b16fd413ccc14c87501c5165  oculus-initramfs-recovery.files
+a7cd382244790ddc038f8c1c61982d660803dba2e27596db421f5ac2399ac0a079041f41c11fdb7762b3a67e7104426e74f6cbb967da2f02162c27125b50672b  oculus-reboot-bootloader.c
+0edbf5e5b30777f73592646a5e181fbe20185904e66c624d988bd1632867fc20c5b76136c0815a50e369fe13c1db9e286b54e54c688ca44cdf72872d50a3a703  oculus-recovery.sudoers
+03649b9cb60f549d052c910057b5472f5285cd8371fa83404e106e4c2f16acc3157364c631378889a2e47acd654adfeca83312c66f8b19eed7468a33819fe4f6  oculus-refresh-rate
+f7bd069f1b0c5d87c39331040f0b50366b84a4ee3a54013b7b86595708221f3e581079c2037e68047a8c7fe70ad11080111baa82bb292bde593c0774d52ddfd4  oculus-usb-recovery
+0004d214163e59781ea67f185605eb5538440ac47bfdeb6ca8ca050545382f590233516d80d0b7a9b69d6042b3f2d034687b285c82a218185377063a63faec2e  oculus-usb-recovery.initd
+3e1a2337366ac3cc8143ef60012e148b16b05757798686d07d2059f68fa99c58c6a2532b0ef6898354ed1997979a7334c265b74468a5dc28a6528157dae4c79a  oculus-usb-recovery.nmconf
 "

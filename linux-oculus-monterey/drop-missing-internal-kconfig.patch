@@ -1,0 +1,25 @@
+From: postmarketOS Oculus Monterey maintainers <maintainers@postmarketos.org>
+Subject: [PATCH] staging: oculus: ignore unavailable internal Kconfig
+
+The public kernel snapshot contains the downstream Oculus drivers but not the
+private internal driver directory referenced by its top-level Kconfig and
+Makefile. Keep the public drivers selectable so the kernel configuration can
+be resolved.
+
+---
+ drivers/staging/oculus/Kconfig | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/staging/oculus/Kconfig b/drivers/staging/oculus/Kconfig
+index e898115d4..e5bb28d70 100644
+--- a/drivers/staging/oculus/Kconfig
++++ b/drivers/staging/oculus/Kconfig
+@@ -241,7 +241,6 @@ config VIRTUAL_SENSOR_UTILS
+ 	help
+ 	  This driver implements virtual thermal sensor helper functionality.
+ 
+-source "drivers/staging/oculus/internal/Kconfig"
+ source "drivers/staging/oculus/mcu/Kconfig"
+ 
+ endif # OCULUS
+

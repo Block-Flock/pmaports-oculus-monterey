@@ -1,0 +1,19 @@
+From: postmarketOS contributors
+Subject: [PATCH] scripts/dtc: share the parser location object
+
+Modern toolchains use -fno-common by default.  This old downstream kernel
+defines yylloc in both generated DTC objects, causing the host dtc build to
+fail before the ARM64 kernel is compiled.  The parser owns the object; make
+the lexer reference it instead.
+
+--- a/scripts/dtc/dtc-lexer.lex.c_shipped
++++ b/scripts/dtc/dtc-lexer.lex.c_shipped
+@@ -637,7 +637,7 @@ char *yytext;
+ #include "srcpos.h"
+ #include "dtc-parser.tab.h"
+ 
+-YYLTYPE yylloc;
++extern YYLTYPE yylloc;
+ extern bool treesource_error;
+ 
+ /* CAUTION: this will stop working if we ever use yyless() or yyunput() */

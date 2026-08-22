@@ -1,0 +1,4 @@
+/usr/sbin/oculus-reboot-bootloader
+/usr/share/mkinitfs/hooks/20-oculus-recovery.sh:/hooks/20-oculus-recovery.sh
+/usr/share/mkinitfs/hooks-cleanup/80-oculus-recovery.sh:/hooks-cleanup/80-oculus-recovery.sh
+

@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Finalize a pmbootstrap boot.img for the unlocked Oculus Quest 1.
+
+Monterey's bootloader expects a legacy Android BootSignature DER container
+after the page-aligned boot image, even while unlocked. This tool copies that
+container from a user-supplied, known-working Monterey boot image, adjusts its
+declared image length, and restores the stock second-stage load address.
+
+The copied signature is not cryptographically valid for the new payload. This
+tool is only for an already-unlocked headset whose bootloader permits modified
+images. It does not sign images and never accesses or flashes a device.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import struct
+import tempfile
+from pathlib import Path
+
+
+BOOT_MAGIC = b"ANDROID!"
+HEADER_VERSION_V0 = 0
+MONTEREY_PAGE_SIZE = 4096
+BOOT_SIGNATURE_SIZE = 4096
+BOOT_TARGET_DER = b"\x13\x05/boot\x02\x04"
+
+
+class ImageError(ValueError):
+    pass
+
+
+def align(value: int, size: int) -> int:
+    return (value + size - 1) // size * size
+
+
+def boot_layout(data: bytes, label: str) -> tuple[int, int]:
+    if len(data) < MONTEREY_PAGE_SIZE or data[:8] != BOOT_MAGIC:
+        raise ImageError(f"{label}: not an Android boot image")
+
+    kernel_size, _, ramdisk_size, _, second_size = struct.unpack_from(
+        "<IIIII", data, 8
+    )
+    page_size = struct.unpack_from("<I", data, 36)[0]
+    header_version = struct.unpack_from("<I", data, 40)[0]
+    if page_size != MONTEREY_PAGE_SIZE or header_version != HEADER_VERSION_V0:
+        raise ImageError(
+            f"{label}: expected header v0/page 4096, got "
+            f"v{header_version}/page {page_size}"
+        )
+
+    logical_end = page_size
+    logical_end += align(kernel_size, page_size)
+    logical_end += align(ramdisk_size, page_size)
+    logical_end += align(second_size, page_size)
+    if logical_end > len(data):
+        raise ImageError(f"{label}: payload extends beyond the file")
+    return logical_end, page_size
+
+
+def extract_signature(template: bytes, logical_end: int) -> bytearray:
+    end = logical_end + BOOT_SIGNATURE_SIZE
+    if end > len(template):
+        raise ImageError("template: missing 4096-byte legacy signature page")
+    signature = bytearray(template[logical_end:end])
+    if signature[:2] != b"\x30\x82":
+        raise ImageError("template: legacy signature page is not DER")
+    marker = signature.find(BOOT_TARGET_DER)
+    if marker < 0 or signature.find(BOOT_TARGET_DER, marker + 1) >= 0:
+        raise ImageError("template: expected one DER /boot length field")
+    return signature
+
+
+def finalize(input_path: Path, template_path: Path, output_path: Path) -> None:
+    source = bytearray(input_path.read_bytes())
+    template = template_path.read_bytes()
+    source_end, _ = boot_layout(source, "input")
+    template_end, _ = boot_layout(template, "template")
+
+    if len(source) != source_end:
+        raise ImageError(
+            "input: expected an unsigned pmbootstrap image ending at its payload"
+        )
+
+    template_second_addr = struct.unpack_from("<I", template, 28)[0]
+    if template_second_addr == 0:
+        raise ImageError("template: second-stage load address is zero")
+    struct.pack_into("<I", source, 28, template_second_addr)
+
+    signature = extract_signature(template, template_end)
+    marker = signature.find(BOOT_TARGET_DER)
+    length_offset = marker + len(BOOT_TARGET_DER)
+    struct.pack_into(">I", signature, length_offset, source_end)
+
+    output = source + signature
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{output_path.name}.", dir=output_path.parent
+    )
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(output)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, output_path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+    print(f"payload_size={source_end}")
+    print(f"signature_size={len(signature)}")
+    print(f"second_offset=0x{template_second_addr:08x}")
+    print(f"output_size={len(output)}")
+    print(f"sha256={hashlib.sha256(output).hexdigest()}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input", type=Path, help="unsigned pmbootstrap boot.img")
+    parser.add_argument("template", type=Path, help="working Monterey boot image")
+    parser.add_argument("output", type=Path, help="finalized boot image")
+    args = parser.parse_args()
+    try:
+        finalize(args.input, args.template, args.output)
+    except (ImageError, OSError, struct.error) as error:
+        parser.error(str(error))
+
+
+if __name__ == "__main__":
+    main()

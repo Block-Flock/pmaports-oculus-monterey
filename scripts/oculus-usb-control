@@ -1,0 +1,98 @@
+#!/bin/sh
+# USB-only control for the connected Quest 1. This utility never flashes.
+
+set -eu
+
+pmos_host=${PMOS_HOST:-172.16.42.1}
+pmos_user=${PMOS_USER:-user}
+
+usage() {
+	printf '%s\n' 'usage: oculus-usb-control {status|reboot-system|reboot-bootloader}'
+	exit 64
+}
+
+adb_serial() {
+	adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }'
+}
+
+fastboot_serial() {
+	fastboot devices | awk 'NF { print $1; exit }'
+}
+
+pmos_interface() {
+	for path in /sys/class/net/*; do
+		[ -e "$path/device" ] || continue
+		device=$(readlink -f "$path/device")
+		usb_device=$(dirname "$device")
+		serial=$(cat "$usb_device/serial" 2>/dev/null || true)
+		product=$(cat "$usb_device/product" 2>/dev/null || true)
+		if [ "$serial" = postmarketOS ] && [ "$product" = "Oculus Quest 1" ]; then
+			basename "$path"
+			return 0
+		fi
+	done
+	return 1
+}
+
+ensure_pmos_route() {
+	interface=$(pmos_interface) || {
+		echo "postmarketOS USB interface not found" >&2
+		return 1
+	}
+	if ! ip -4 address show dev "$interface" | grep -q '172\.16\.42\.2/24'; then
+		sudo ip link set "$interface" up
+		sudo ip address replace 172.16.42.2/24 dev "$interface"
+	fi
+}
+
+pmos_ssh() {
+	ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+		"$pmos_user@$pmos_host" "$@"
+}
+
+pmos_ssh_tty() {
+	ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -t \
+		"$pmos_user@$pmos_host" "$@"
+}
+
+[ "$#" -eq 1 ] || usage
+
+case "$1" in
+status)
+		if serial=$(adb_serial) && [ -n "$serial" ]; then
+			echo "mode=android-adb serial=$serial"
+			adb -s "$serial" shell getprop ro.boot.slot_suffix
+		elif serial=$(fastboot_serial) && [ -n "$serial" ]; then
+			echo "mode=oculus-fastboot serial=$serial"
+			fastboot -s "$serial" getvar product
+			fastboot -s "$serial" getvar current-slot
+		elif interface=$(pmos_interface) && [ -n "$interface" ]; then
+			echo "mode=postmarketos-usb interface=$interface host=$pmos_host"
+			ip -br link show "$interface"
+		else
+			echo "Quest not detected over ADB, fastboot, or postmarketOS USB" >&2
+			exit 69
+		fi
+		;;
+reboot-system)
+		if serial=$(adb_serial) && [ -n "$serial" ]; then
+			adb -s "$serial" reboot
+		else
+			ensure_pmos_route
+			pmos_ssh_tty 'sudo reboot'
+		fi
+		;;
+reboot-bootloader)
+		if serial=$(adb_serial) && [ -n "$serial" ]; then
+			adb -s "$serial" reboot bootloader
+		else
+			ensure_pmos_route
+			pmos_ssh 'sudo -n /usr/sbin/oculus-reboot-bootloader'
+		fi
+		;;
+*)
+		usage
+		;;
+esac
+
+# Intentionally no flash command exists here. Never modify or flash abl/xbl.

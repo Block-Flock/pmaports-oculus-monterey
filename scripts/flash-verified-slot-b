@@ -1,0 +1,88 @@
+#!/bin/sh
+# Controlled Monterey test install. The only write targets are boot_b/system_b.
+
+set -eu
+
+ack='--confirm-overwrite-monterey-slot-b'
+[ "$#" -eq 3 ] && [ "$3" = "$ack" ] || {
+	echo "usage: $0 BOOT_IMG SYSTEM_IMG $ack" >&2
+	exit 64
+}
+
+boot=$1
+system=$2
+[ -f "$boot" ] && [ -f "$system" ] || {
+	echo "boot or system image is missing" >&2
+	exit 66
+}
+
+boot_size=$(stat -c %s "$boot")
+system_size=$(stat -c %s "$system")
+[ "$boot_size" -le 67108864 ] || { echo "boot image exceeds boot_b" >&2; exit 65; }
+[ "$system_size" -le 2684354560 ] || { echo "system image exceeds system_b" >&2; exit 65; }
+[ "$((boot_size % 4096))" -eq 0 ] || { echo "boot image is not 4096-byte aligned" >&2; exit 65; }
+[ "$((system_size % 4096))" -eq 0 ] || { echo "system image is not 4096-byte aligned" >&2; exit 65; }
+boot_blocks=$((boot_size / 4096))
+system_blocks=$((system_size / 4096))
+
+boot_hash=$(sha256sum "$boot" | cut -d' ' -f1)
+system_hash=$(sha256sum "$system" | cut -d' ' -f1)
+
+serial=$(adb get-serialno 2>/dev/null || true)
+[ -n "$serial" ] && [ "$serial" != unknown ] || {
+	echo "exactly one authorized ADB device must be connected" >&2; exit 69;
+}
+if [ -n "${MONTEREY_SERIAL:-}" ] && [ "$serial" != "$MONTEREY_SERIAL" ]; then
+	echo "connected serial does not match MONTEREY_SERIAL" >&2
+	exit 69
+fi
+
+adb -s "$serial" wait-for-device
+[ "$(adb -s "$serial" shell getprop ro.product.device | tr -d '\r')" = monterey ] || {
+	echo "connected ADB device is not Monterey" >&2; exit 69;
+}
+[ "$(adb -s "$serial" shell getprop ro.boot.slot_suffix | tr -d '\r')" = _a ] || {
+	echo "refusing: Android must be running from slot A" >&2; exit 69;
+}
+
+adb -s "$serial" reboot bootloader
+for _ in $(seq 1 30); do fastboot -s "$serial" devices | grep -q . && break; sleep 1; done
+fastboot -s "$serial" devices | grep -q . || {
+	echo "fastboot device did not appear" >&2; exit 69;
+}
+fastboot -s "$serial" getvar product 2>&1 | grep -q 'product: monterey' || exit 69
+fastboot -s "$serial" getvar unlocked 2>&1 | grep -q 'unlocked: yes' || exit 77
+fastboot -s "$serial" getvar current-slot 2>&1 | grep -q 'current-slot: a' || exit 69
+
+fastboot -s "$serial" flash boot_b "$boot"
+fastboot -s "$serial" flash system_b "$system"
+
+# Stay on A for a read-back hash before allowing the first B boot.
+fastboot -s "$serial" reboot
+for _ in $(seq 1 60); do
+	adb -s "$serial" get-state >/dev/null 2>&1 && break
+	sleep 2
+done
+adb -s "$serial" root >/dev/null
+adb -s "$serial" wait-for-device
+[ "$(adb -s "$serial" shell id -u | tr -d '\r')" = 0 ] || {
+	echo "root adbd is required for partition read-back" >&2; exit 77;
+}
+written_boot=$(adb -s "$serial" exec-out \
+	"dd if=/dev/block/bootdevice/by-name/boot_b bs=4096 count=$boot_blocks 2>/dev/null" |
+	sha256sum | cut -d' ' -f1)
+
+# system_b is larger than the generated image. Hash exactly the bytes written;
+# the remaining tail is outside the image and intentionally ignored.
+written_system=$(adb -s "$serial" exec-out \
+	"dd if=/dev/block/bootdevice/by-name/system_b bs=4096 count=$system_blocks 2>/dev/null" |
+	sha256sum | cut -d' ' -f1)
+[ "$written_boot" = "$boot_hash" ] || { echo "boot_b read-back hash mismatch" >&2; exit 74; }
+[ "$written_system" = "$system_hash" ] || { echo "system_b read-back hash mismatch" >&2; exit 74; }
+
+adb -s "$serial" reboot bootloader
+for _ in $(seq 1 30); do fastboot -s "$serial" devices | grep -q . && break; sleep 1; done
+fastboot -s "$serial" getvar current-slot 2>&1 | grep -q 'current-slot: a' || exit 69
+fastboot -s "$serial" set_active b
+echo "slot-B images verified; booting B"
+fastboot -s "$serial" reboot

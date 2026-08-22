@@ -1,0 +1,30 @@
+diff --git a/init/initramfs.c b/init/initramfs.c
+index 7e1118c..0279087 100644
+--- a/init/initramfs.c
++++ b/init/initramfs.c
+@@ -607,6 +607,16 @@ static void __init clean_rootfs(void)
+ #endif
+ 
+ static int __initdata do_skip_initramfs;
++static int __initdata pmos_force_initramfs;
++
++static int __init pmos_force_initramfs_param(char *str)
++{
++	if (*str)
++		return 0;
++	pmos_force_initramfs = 1;
++	return 1;
++}
++__setup("pmos_force_initramfs", pmos_force_initramfs_param);
+ 
+ static int __init skip_initramfs_param(char *str)
+ {
+@@ -621,7 +631,7 @@ static int __init populate_rootfs(void)
+ {
+ 	char *err;
+ 
+-	if (do_skip_initramfs) {
++	if (do_skip_initramfs && !pmos_force_initramfs) {
+ 		if (initrd_start)
+ 			free_initrd();
+ 		return default_rootfs();

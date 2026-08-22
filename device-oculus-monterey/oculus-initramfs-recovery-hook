@@ -1,0 +1,72 @@
+#!/bin/busybox ash
+
+# Return a failed early boot to the Oculus bootloader instead of leaving an
+# unreachable battery-powered headset in initramfs forever. Override with
+# oculus.recovery_timeout=SECONDS on the kernel command line; zero disables it.
+timeout=300
+force_debug=false
+cmdline_path=${OCULUS_CMDLINE_PATH:-/proc/cmdline}
+pidfile=${OCULUS_WATCHDOG_PIDFILE:-/run/oculus-initramfs-watchdog.pid}
+kmsg=${OCULUS_KMSG_PATH:-/dev/kmsg}
+for argument in $(cat "$cmdline_path"); do
+	case "$argument" in
+	oculus.recovery_timeout=*)
+		timeout=${argument#*=}
+		;;
+	oculus.force-debug)
+		force_debug=true
+		;;
+	esac
+done
+
+case "$timeout" in
+0)
+	echo "Monterey initramfs recovery watchdog disabled" >"$kmsg"
+	exit 0
+	;;
+''|*[!0-9]*)
+	echo "Invalid oculus.recovery_timeout; using 300 seconds" >"$kmsg"
+	timeout=300
+	;;
+esac
+
+if [ "$timeout" -lt 30 ] || [ "$timeout" -gt 1800 ]; then
+	echo "oculus.recovery_timeout must be 30-1800; using 300 seconds" >"$kmsg"
+	timeout=300
+fi
+
+if [ -r "$pidfile" ]; then
+	previous_pid=$(cat "$pidfile")
+	case "$previous_pid" in
+	''|*[!0-9]*) ;;
+	*)
+		if kill -0 "$previous_pid" 2>/dev/null; then
+			echo "Monterey initramfs recovery watchdog already armed" >"$kmsg"
+			exit 0
+		fi
+		;;
+	esac
+	rm -f "$pidfile"
+fi
+
+(
+	sleep "$timeout"
+	echo "Monterey initramfs timeout; returning to bootloader" >"$kmsg"
+	/usr/sbin/oculus-reboot-bootloader
+) &
+echo "$!" >"$pidfile"
+echo "Monterey initramfs recovery watchdog: ${timeout}s" >"$kmsg"
+
+if [ "$force_debug" = true ]; then
+	echo "Monterey forced NCM debug shell before storage discovery" >"$kmsg"
+	(
+		while :; do
+			telnetd -F -b "172.16.42.1:23" -l /bin/sh
+			echo "Monterey telnetd exited; restarting" >"$kmsg"
+			sleep 1
+		done
+	) &
+	while :; do
+		sleep 5
+	done
+fi
