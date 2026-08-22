@@ -19,6 +19,14 @@ branch `oculus-vr-desktop`. It currently pins KDE merge request 8671 at commit
 `ccdd46eadbd705c6ea2efb9c5de03e2fe5ec148a`, plus two Qt 6.11 include fixes
 at fork commit `ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf`.
 
+The native device-driver work is in
+[`Block-Flock/monado-oculus-monterey`](https://github.com/Block-Flock/monado-oculus-monterey),
+branch `oculus-monterey`. Commit
+`1d8bd7f0042320ef0af294f88ab80f1f2814dc4a` adds the first bounds-checked
+SyncBoss HMD IMU parser and tests. It is not yet selected by this UI package:
+the runtime remains on Alpine's stock Monado until hardware capture confirms
+the packet layout and the driver owns sensor enable/disable cleanly.
+
 ## Why there are two compositors
 
 KDE's VR mode is a KWin plugin and uses KWin-private window, input, and scene
