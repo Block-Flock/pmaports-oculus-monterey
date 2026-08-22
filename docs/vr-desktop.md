@@ -22,10 +22,20 @@ at fork commit `ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf`.
 The native device-driver work is in
 [`Block-Flock/monado-oculus-monterey`](https://github.com/Block-Flock/monado-oculus-monterey),
 branch `oculus-monterey`. Commit
-`1d8bd7f0042320ef0af294f88ab80f1f2814dc4a` adds the first bounds-checked
-SyncBoss HMD IMU parser and tests. It is not yet selected by this UI package:
-the runtime remains on Alpine's stock Monado until hardware capture confirms
-the packet layout and the driver owns sensor enable/disable cleanly.
+`e160863ad52c0e1c29c8bb7df3e47facdb02288d` adds the bounds-checked SyncBoss
+HMD IMU parser, an orientation-only Monado device, and a guarded target builder.
+The driver sends only the exact v50 zero-payload HMD IMU enable and disable
+commands. It refuses device creation unless a valid type `0x50` packet arrives
+within two seconds, and its host lifecycle test verifies the exact command
+bytes. `postmarketos-ui-oculus-labwc` now selects this pinned fork instead of
+Alpine's stock Monado.
+
+This is deliberately an early hardware backend. Device timestamp units,
+sensor axes, lens geometry, distortion, and display presentation still need
+on-headset calibration. Until then the driver uses host monotonic arrival time
+for 3DoF fusion, reports no positional tracking, uses a provisional 63.5 mm
+IPD and 90 degree per-eye field of view, and applies no distortion mesh. These
+values are bring-up scaffolding, not a claim of visually correct VR.
 
 ## Why there are two compositors
 
@@ -53,10 +63,12 @@ compositor first and the UI package second:
 
 ```sh
 pmbootstrap build kwin-oculus-monterey
+pmbootstrap build monado-oculus-monterey
 pmbootstrap build postmarketos-ui-oculus-labwc
 ```
 
-The second package depends on labwc, Monado, and `kwin-oculus-monterey`, so
+The UI package depends on labwc, `monado-oculus-monterey`, and
+`kwin-oculus-monterey`, so
 selecting this UI pulls in the complete two-compositor userspace. A successful
 KWin APK contains `/usr/bin/kwin_wayland`,
 `/usr/lib/qt6/plugins/kwin/plugins/vr.so`, the VR settings module, and
@@ -167,8 +179,12 @@ pairing data may be committed or included in an APK.
 - [ ] Show the framebuffer/labwc diagnostic on the panel.
 - [ ] Start the patched KWin VR plugin on the headset against Monado.
 - [ ] Capture and document real SyncBoss IMU records with the read-only probe.
-- [ ] Start Monado with a Monterey hardware backend and render a stereo test
-      scene (never substitute simulated pose for this gate).
+- [x] Implement and host-test a guarded, orientation-only Monterey Monado
+      backend.
+- [ ] Confirm the Monterey backend's IMU stream and orientation axes on the
+      headset.
+- [ ] Render a stereo test scene on the headset (never substitute simulated
+      pose for this gate).
 - [ ] Present through the v50 Qualcomm graphics compatibility layer.
 - [ ] Enumerate already-paired Quest 1 Touch controllers without firmware
       writes.

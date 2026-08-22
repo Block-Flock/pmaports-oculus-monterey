@@ -1,7 +1,7 @@
 # Reference: https://postmarketos.org/uipkg
 pkgname=postmarketos-ui-oculus-labwc
 pkgver=1
-pkgrel=1
+pkgrel=2
 pkgdesc="Recoverable labwc desktop and nested KWin VR launcher for Oculus Quest 1"
 url="https://github.com/un-simp/pmaports-oculus-monterey"
 arch="aarch64"
@@ -17,7 +17,7 @@ depends="
 	font-dejavu
 	kwin-oculus-monterey
 	labwc
-	monado
+	monado-oculus-monterey
 	postmarketos-base-ui
 	tinydm
 	xf86-video-fbdev

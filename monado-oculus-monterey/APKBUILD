@@ -1,0 +1,62 @@
+# Monado v25.1.0 with the guarded Oculus Quest 1 (Monterey) driver.
+pkgname=monado-oculus-monterey
+pkgver=25.1.0_git20260822
+pkgrel=0
+pkgdesc="Monado OpenXR runtime with guarded Oculus Monterey HMD support"
+url="https://github.com/Block-Flock/monado-oculus-monterey"
+arch="aarch64"
+license="BSL-1.0"
+depends="xr-hardware"
+provides="monado=25.1.0"
+replaces="monado"
+makedepends="
+	cmake
+	cmd:glslangValidator
+	cmd:wayland-scanner
+	doxygen
+	eigen-dev
+	eudev-dev
+	graphviz
+	libbsd-dev
+	libjpeg-turbo-dev
+	libsurvive-dev
+	libxrandr-dev
+	mesa-dev
+	opencv-dev
+	openhmd-dev
+	samurai
+	sdl2-dev
+	v4l-utils-dev
+	vulkan-loader-dev
+	wayland-dev
+	wayland-protocols
+	zlib-dev
+	"
+_commit=e160863ad52c0e1c29c8bb7df3e47facdb02288d
+source="$pkgname-$_commit.tar.gz::https://github.com/Block-Flock/monado-oculus-monterey/archive/$_commit.tar.gz"
+builddir="$srcdir/$pkgname-$_commit"
+
+build() {
+	cmake -B build -G Ninja \
+		-DCMAKE_BUILD_TYPE=None \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DXRT_BUILD_DRIVER_MONTEREY=ON
+	cmake --build build
+}
+
+check() {
+	ctest --test-dir build --output-on-failure
+}
+
+package() {
+	DESTDIR="$pkgdir" cmake --install build
+
+	mkdir -p "$pkgdir"/etc/xdg/openxr/1
+	ln -s /usr/share/openxr/1/openxr_monado.json \
+		"$pkgdir"/etc/xdg/openxr/1/active_runtime.json
+}
+
+sha512sums="
+d4bfb3036d47b0a27a33f65f61592c02a4f92b1c0834cf1a370b03242ba7bf68a22548cc09563618302b280c510cbd8d87844b3ae1a48aa7ab5f598d622b8f7b  monado-oculus-monterey-e160863ad52c0e1c29c8bb7df3e47facdb02288d.tar.gz
+"
