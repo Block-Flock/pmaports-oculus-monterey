@@ -16,7 +16,8 @@ full Plasma install:
 The KWin source fork is
 [`Block-Flock/kwin-oculus-monterey`](https://github.com/Block-Flock/kwin-oculus-monterey),
 branch `oculus-vr-desktop`. It currently pins KDE merge request 8671 at commit
-`ccdd46eadbd705c6ea2efb9c5de03e2fe5ec148a`.
+`ccdd46eadbd705c6ea2efb9c5de03e2fe5ec148a`, plus two Qt 6.11 include fixes
+at fork commit `ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf`.
 
 ## Why there are two compositors
 
@@ -36,6 +37,23 @@ oculus-vr stop
 
 KWin VR is not started automatically. Until the Monterey Monado driver works,
 starting it can only exercise the nested compositor and failure diagnostics.
+
+## Build the desktop packages
+
+From a pmbootstrap checkout configured for `oculus-monterey`, build the custom
+compositor first and the UI package second:
+
+```sh
+pmbootstrap build kwin-oculus-monterey
+pmbootstrap build postmarketos-ui-oculus-labwc
+```
+
+The second package depends on labwc, Monado, and `kwin-oculus-monterey`, so
+selecting this UI pulls in the complete two-compositor userspace. A successful
+KWin APK contains `/usr/bin/kwin_wayland`,
+`/usr/lib/qt6/plugins/kwin/plugins/vr.so`, the VR settings module, and
+`/usr/lib/libexec/kwinvr-xrtest`. This is a build gate only; on-headset OpenXR,
+tracking, display, and sleep/wake validation remain separate milestones.
 
 ## Why the GPU needs a compatibility layer
 
@@ -117,8 +135,9 @@ pairing data may be committed or included in an APK.
 - [x] Stable slot-B boot and USB recovery.
 - [x] Publish the KWin VR fork at the exact KDE merge-request revision.
 - [x] Package a labwc base desktop and guarded nested-KWin launcher.
+- [x] Build the patched KWin VR plugin and `kwin_wayland` for aarch64.
 - [ ] Show the framebuffer/labwc diagnostic on the panel.
-- [ ] Build and start the patched KWin VR plugin on aarch64.
+- [ ] Start the patched KWin VR plugin on the headset against Monado.
 - [ ] Start Monado with a Monterey HMD stub and render a stereo test scene.
 - [ ] Present through the v50 Qualcomm graphics compatibility layer.
 - [ ] Enumerate already-paired Quest 1 Touch controllers without firmware

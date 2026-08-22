@@ -297,10 +297,13 @@ Package `postmarketos-ui-oculus-labwc` provides `oculus-labwc-session`,
 `oculus-vr start`, `oculus-vr-run`, and `oculus-vr stop`. With the current
 non-DRM kernel, the base session uses Xorg fbdev plus a Pixman-rendered nested
 labwc as a visible-pixel diagnostic. That path is not expected to reach VR
-frame rates. The production route remains the local v50 Qualcomm HWC/KGSL
-compatibility host, Monado, then nested KWin VR. Copying the Android Oculus runtime into
-postmarketOS is not a reliable substitute because it depends on Android Binder,
-SurfaceFlinger, vendor services, and proprietary runtime interfaces.
+frame rates. The UI package installs the aarch64-tested
+`kwin-oculus-monterey` build and Monado, but deliberately does not auto-start
+VR while the Monterey Monado driver is absent. The production route remains
+the local v50 Qualcomm HWC/KGSL compatibility host, Monado, then nested KWin
+VR. Copying the Android Oculus runtime into postmarketOS is not a reliable
+substitute because it depends on Android Binder, SurfaceFlinger, vendor
+services, and proprietary runtime interfaces.
 
 The public kernel checkout references a missing
 `drivers/staging/oculus/internal/Kconfig`; this port removes that unavailable

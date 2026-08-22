@@ -1,0 +1,116 @@
+# KDE VR Mode MR 8671, pinned for the Oculus Quest 1 port.
+pkgname=kwin-oculus-monterey
+pkgver=6.6.80_git20260822
+pkgrel=0
+pkgdesc="KWin with the experimental VR Mode plugin for Oculus Monterey"
+url="https://github.com/Block-Flock/kwin-oculus-monterey"
+arch="aarch64"
+license="GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only) AND LGPL-2.1-only"
+provides="kwin=6.6.80"
+replaces="kwin"
+depends="
+	aurorae
+	hwdata
+	kirigami
+	openxr
+	qt6-qtmultimedia
+	qt6-qtquick3d
+	qt6-qtwayland
+	xwayland
+	"
+depends_dev="
+	breeze-dev
+	eudev-dev
+	fontconfig-dev
+	kcmutils-dev
+	kcompletion-dev
+	kconfig-dev
+	kconfigwidgets-dev
+	kcoreaddons-dev
+	kcrash-dev
+	kdeclarative-dev
+	kdecoration-dev
+	kglobalaccel-dev
+	ki18n-dev
+	kiconthemes-dev
+	kidletime-dev
+	kio-dev
+	knewstuff-dev
+	knighttime-dev
+	knotifications-dev
+	kpackage-dev
+	krunner-dev
+	kscreenlocker-dev
+	kservice-dev
+	ksvg-dev
+	ktextwidgets-dev
+	kwayland-dev
+	kwidgetsaddons-dev
+	kwindowsystem-dev
+	kxmlgui-dev
+	lcms2-dev
+	libdrm-dev
+	libei-dev
+	libepoxy-dev
+	libevdev-dev
+	libinput-dev
+	libplasma-dev
+	libqaccessibilityclient-dev
+	libxcvt-dev
+	libxi-dev
+	libxkbcommon-dev
+	mesa-dev
+	mesa-gbm
+	openxr-dev
+	pipewire-dev
+	plasma-activities-dev
+	qt6-qtbase-dev
+	qt6-qtdeclarative-dev
+	qt6-qtquick3d-dev
+	qt6-qtsensors-dev
+	wayland-dev
+	xcb-util-cursor-dev
+	xcb-util-image-dev
+	xcb-util-wm-dev
+	"
+makedepends="$depends_dev
+	extra-cmake-modules
+	kdoctools-dev
+	kglobalacceld-dev
+	kpipewire-dev
+	libcap-utils
+	libdisplay-info-dev
+	plasma-wayland-protocols
+	qt6-qtdeclarative-private-dev
+	qt6-qttools-dev
+	samurai
+	"
+subpackages="
+	$pkgname-dbg
+	$pkgname-dev
+	$pkgname-lang
+	$pkgname-doc
+	"
+_commit=ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf
+source="$pkgname-$_commit.tar.gz::https://github.com/Block-Flock/kwin-oculus-monterey/archive/$_commit.tar.gz"
+builddir="$srcdir/$pkgname-$_commit"
+options="!check"
+
+build() {
+	CFLAGS="$CFLAGS -O2 -g1" CXXFLAGS="$CXXFLAGS -O2 -g1" \
+	cmake -B build -G Ninja \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DBUILD_TESTING=OFF \
+		-DKWIN_BUILD_VR=ON
+	cmake --build build
+}
+
+package() {
+	DESTDIR="$pkgdir" cmake --install build
+}
+
+sha512sums="
+aaa67f796b7daabde2c86eca4f0fc0119cd01f3ed925c5d248c3972ac816b86e679bda05f967f9f28374f752e86992e7957d986e30cb6a725b9b724b18a6323b  kwin-oculus-monterey-ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf.tar.gz
+"
