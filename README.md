@@ -84,6 +84,27 @@ and KGSL), then provide native userspace interfaces or an explicitly isolated
 compatibility layer. The proprietary Android services are not copied into the
 rootfs by this repository.
 
+The device package mounts the preserved `modem_a` and `system_a` partitions
+read-only at boot and exposes their firmware through
+`/lib/firmware/postmarketos`. It does not copy those files into the package.
+This requires slot A to remain a complete, known-good Android installation;
+the service deliberately never selects `modem_b` or `system_b`, because B is
+the postmarketOS trial slot. Inspect it with:
+
+```sh
+rc-service oculus-stock-firmware status
+oculus-stock-firmware status
+find /lib/firmware/postmarketos -maxdepth 2 -type l -ls
+```
+
+Live testing proved that these mounts let the built-in QCACLD loader create
+`/dev/wlan`. A working `wlan0` still depends on the older Qualcomm IPC Router
+and remote WCNSS/modem firmware-service handshake. The V50 kernel implements
+`AF_MSM_IPC`, not modern upstream `AF_QRTR`, so Alpine's current QRTR services
+are not a drop-in solution. Directly voting the modem subsystem on without its
+persistent-storage service caused an immediate reboot in testing; the default
+image therefore does not perform that unsafe shortcut or claim Wi-Fi support.
+
 ## Build
 
 Use a current `pmbootstrap` checkout with this repository's package directories

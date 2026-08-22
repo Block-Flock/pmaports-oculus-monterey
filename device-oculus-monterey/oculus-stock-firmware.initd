@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+
+description="Mount untouched Oculus slot-A firmware read-only"
+
+depend() {
+	need localmount
+	after oculus-mdev
+	before networkmanager wpa_supplicant
+}
+
+start() {
+	ebegin "Exposing Oculus stock firmware read-only"
+	/usr/sbin/oculus-stock-firmware start
+	eend $?
+}
+
+stop() {
+	ebegin "Unexposing Oculus stock firmware"
+	/usr/sbin/oculus-stock-firmware stop
+	eend $?
+}

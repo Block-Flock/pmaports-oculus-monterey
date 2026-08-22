@@ -136,9 +136,37 @@ node is not enough.
 
 Validate ALSA cards and playback/capture before adding a desktop policy layer.
 Validate Wi-Fi, Bluetooth, thermal behavior, charging, battery reporting,
-suspend, and resume separately. Proprietary modem/DSP firmware may be loaded
-from the preserved firmware partition at runtime, but must not be committed to
-this repository.
+suspend, and resume separately. `oculus-stock-firmware` resolves the exact
+`modem_a` and `system_a` PARTNAMEs, mounts both filesystems with read-only,
+`nodev`, `nosuid`, and `noexec` options, and creates runtime-only links under
+`/lib/firmware/postmarketos`. Proprietary modem/DSP firmware remains on the
+preserved Android slot and is not committed to this repository.
+
+The stock Wi-Fi sequence is now partially reproduced and has distinct proof
+gates:
+
+1. Android mounts `modem_a` at `/vendor/firmware_mnt`; its ueventd firmware
+   search path is `/vendor/firmware_mnt/image/`.
+2. The built-in `CONFIG_QCA_CLD_WLAN` driver waits for userspace to write to
+   `/sys/kernel/boot_wlan/boot_wlan` after firmware storage is available.
+3. That write successfully initialized the host driver and created `/dev/wlan`
+   during a bounded debug boot.
+4. Writing `ON` to `/dev/wlan` still timed out because ICNSS never received its
+   firmware-ready QMI event, so no `wlan0` was created.
+
+The downstream 4.4 kernel uses Qualcomm's old `AF_MSM_IPC` IPC Router rather
+than modern `AF_QRTR`. Starting current Alpine `qrtr`/`pd-mapper` packages alone
+cannot satisfy that ABI. Opening `/dev/subsys_modem` without the matching
+persistent-storage transport caused the test headset to reboot immediately.
+Do not add that direct subsystem vote to a default service. The next radio gate
+is a bounded, recoverable implementation of the old IPC Router remote-storage
+and service-location path, followed by an ICNSS `FW READY` observation, a
+`wlan0` interface, scan results, association, and sustained traffic.
+
+Audio is independently blocked before firmware policy: the authentic kernel
+currently reports `msm8998-asoc-snd ... ASoC: platform (null) not registered`
+and registers no ALSA cards. Resolve the CM710X/QDSP platform registration
+before treating firmware visibility as audio proof.
 
 ## 6. OpenXR and KWin VR
 

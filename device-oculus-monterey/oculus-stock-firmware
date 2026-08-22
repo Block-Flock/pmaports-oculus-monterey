@@ -1,0 +1,204 @@
+#!/bin/sh
+
+# Expose firmware from the untouched Android slot without copying proprietary
+# blobs into the postmarketOS package or ever mounting Android partitions RW.
+
+set -eu
+
+firmware_root=${OCULUS_FIRMWARE_ROOT:-/lib/firmware/postmarketos}
+modem_mount=${OCULUS_MODEM_MOUNT:-/vendor/firmware_mnt}
+system_mount=${OCULUS_SYSTEM_MOUNT:-/vendor/oculus-system}
+links_file=${OCULUS_FIRMWARE_LINKS:-/run/oculus-stock-firmware.links}
+sys_class_block=${OCULUS_SYS_CLASS_BLOCK:-/sys/class/block}
+mount_command=${OCULUS_MOUNT_COMMAND:-mount}
+umount_command=${OCULUS_UMOUNT_COMMAND:-umount}
+
+log() {
+	printf '%s\n' "oculus-stock-firmware: $*"
+}
+
+find_partition() {
+	partname=$1
+	found=
+
+	for uevent in "$sys_class_block"/*/uevent; do
+		[ -r "$uevent" ] || continue
+		grep -qx "PARTNAME=$partname" "$uevent" || continue
+		devname=$(sed -n 's/^DEVNAME=//p' "$uevent")
+		[ -n "$devname" ] || continue
+		if [ -n "$found" ]; then
+			log "more than one partition is named $partname"
+			return 1
+		fi
+		found=/dev/$devname
+	done
+
+	if [ -z "$found" ] || [ ! -b "$found" ]; then
+		log "could not resolve block partition $partname"
+		return 1
+	fi
+	printf '%s\n' "$found"
+}
+
+mounted_source() {
+	awk -v target="$1" '$2 == target { print $1; exit }' /proc/mounts
+}
+
+mounted_options() {
+	awk -v target="$1" '$2 == target { print $4; exit }' /proc/mounts
+}
+
+verify_read_only_mount() {
+	target=$1
+	options=,$(mounted_options "$target"),
+
+	for required in ro nosuid nodev noexec; do
+		case "$options" in
+		*,"$required",*) ;;
+		*)
+			log "$target is missing required mount option $required"
+			return 1
+			;;
+		esac
+	done
+}
+
+mount_read_only() {
+	device=$1
+	target=$2
+	type=$3
+	options=$4
+	existing=$(mounted_source "$target")
+
+	if [ -n "$existing" ]; then
+		if [ "$existing" != "$device" ]; then
+			log "$target is already mounted from unexpected source $existing"
+			return 1
+		fi
+		verify_read_only_mount "$target"
+		return
+	fi
+
+	mkdir -p "$target"
+	"$mount_command" -t "$type" -o "$options" "$device" "$target"
+	verify_read_only_mount "$target"
+}
+
+record_link() {
+	printf '%s\n' "$1" >>"$links_file"
+}
+
+link_firmware_file() {
+	source=$1
+	destination=$2
+
+	[ -f "$source" ] || return 0
+	if [ -e "$destination" ] || [ -L "$destination" ]; then
+		return 0
+	fi
+	ln -s "$source" "$destination"
+	record_link "$destination"
+}
+
+link_firmware_directory() {
+	source_directory=$1
+	[ -d "$source_directory" ] || return 0
+	for source in "$source_directory"/*; do
+		[ -f "$source" ] || continue
+		link_firmware_file "$source" "$firmware_root/${source##*/}"
+	done
+}
+
+remove_managed_links() {
+	[ -r "$links_file" ] || return 0
+	while IFS= read -r link; do
+		case "$link" in
+		"$firmware_root"/*)
+			[ -L "$link" ] && rm -f "$link"
+			;;
+		esac
+	done <"$links_file"
+	rm -f "$links_file"
+}
+
+unmount_expected() {
+	target=$1
+	expected=$2
+	existing=$(mounted_source "$target")
+
+	[ -n "$existing" ] || return 0
+	if [ "$existing" != "$expected" ]; then
+		log "refusing to unmount unexpected source $existing from $target"
+		return 1
+	fi
+	"$umount_command" "$target"
+}
+
+cleanup_firmware() {
+	modem_device=$1
+	system_device=$2
+	result=0
+
+	remove_managed_links
+	unmount_expected "$system_mount" "$system_device" || result=1
+	unmount_expected "$modem_mount" "$modem_device" || result=1
+	return "$result"
+}
+
+start_firmware() {
+	modem_device=$(find_partition modem_a)
+	system_device=$(find_partition system_a)
+
+	mkdir -p "$firmware_root/wlan/qca_cld" "${links_file%/*}"
+	remove_managed_links
+	if ! mount_read_only "$modem_device" "$modem_mount" vfat \
+		ro,nosuid,nodev,noexec; then
+		return 1
+	fi
+	if ! mount_read_only "$system_device" "$system_mount" ext4 \
+		ro,noload,nosuid,nodev,noexec; then
+		cleanup_firmware "$modem_device" "$system_device" || true
+		return 1
+	fi
+
+	# Android's ueventd searches firmware_mnt/image first. Preserve that
+	# preference, then fill non-conflicting codec/device firmware from system.
+	link_firmware_directory "$modem_mount/image"
+	link_firmware_directory "$system_mount/system/vendor/firmware"
+	link_firmware_file \
+		"$system_mount/system/vendor/etc/wifi/WCNSS_qcom_cfg.ini" \
+		"$firmware_root/wlan/qca_cld/WCNSS_qcom_cfg.ini"
+
+	if [ ! -e "$firmware_root/wlanmdsp.mbn" ] || \
+	   [ ! -e "$firmware_root/bdwlan.bin" ] || \
+	   [ ! -e "$firmware_root/wlan/qca_cld/WCNSS_qcom_cfg.ini" ]; then
+		log "required WCN3990 firmware links are incomplete"
+		cleanup_firmware "$modem_device" "$system_device" || true
+		return 1
+	fi
+
+	log "stock slot-A firmware is available read-only"
+}
+
+stop_firmware() {
+	modem_device=$(find_partition modem_a)
+	system_device=$(find_partition system_a)
+	cleanup_firmware "$modem_device" "$system_device"
+}
+
+case ${1:-start} in
+start)
+	start_firmware
+	;;
+stop)
+	stop_firmware
+	;;
+status)
+	printf 'modem=%s\n' "$(mounted_source "$modem_mount")"
+	printf 'system=%s\n' "$(mounted_source "$system_mount")"
+	;;
+*)
+	echo "usage: ${0##*/} {start|stop|status}" >&2
+	exit 2
+	;;
+esac

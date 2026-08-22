@@ -24,6 +24,10 @@ SUBPARTITION_MAPPER = (
 FLASH_SLOT_B = ROOT / "scripts" / "flash-verified-slot-b"
 MDEV_SERVICE = ROOT / "device-oculus-monterey" / "oculus-mdev.initd"
 RECOVERY_SUDOERS = ROOT / "device-oculus-monterey" / "oculus-recovery.sudoers"
+STOCK_FIRMWARE = ROOT / "device-oculus-monterey" / "oculus-stock-firmware"
+STOCK_FIRMWARE_SERVICE = (
+    ROOT / "device-oculus-monterey" / "oculus-stock-firmware.initd"
+)
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -152,6 +156,21 @@ class UsbRecoveryTest(unittest.TestCase):
         self.assertIn('/usr/sbin/oculus-refresh-rate 72', policy)
         self.assertIn('/usr/sbin/oculus-refresh-rate 90', policy)
         self.assertNotIn('/usr/sbin/oculus-refresh-rate *', policy)
+
+    def test_stock_firmware_mounts_only_slot_a_read_only(self) -> None:
+        helper = STOCK_FIRMWARE.read_text()
+        self.assertIn("find_partition modem_a", helper)
+        self.assertIn("find_partition system_a", helper)
+        self.assertNotIn("find_partition modem_b", helper)
+        self.assertNotIn("find_partition system_b", helper)
+        self.assertIn("ro,nosuid,nodev,noexec", helper)
+        self.assertIn("ro,noload,nosuid,nodev,noexec", helper)
+        self.assertNotIn("mount -o rw", helper)
+
+    def test_stock_firmware_precedes_network_services(self) -> None:
+        service = STOCK_FIRMWARE_SERVICE.read_text()
+        self.assertIn("after oculus-mdev", service)
+        self.assertIn("before networkmanager wpa_supplicant", service)
 
 
 if __name__ == "__main__":
