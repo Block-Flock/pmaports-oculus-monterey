@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+description="Device manager for Monterey's devtmpfs-less stock kernel"
+supervisor=supervise-daemon
+command=/sbin/mdev
+command_args="-df"
+
+depend() {
+	need devfs sysfs
+	before udev udev-trigger networkmanager oculus-usb-recovery
+}
+
+start_pre() {
+	# Built-in UFS, framebuffer, KGSL, SyncBoss, camera, input and sound
+	# drivers have already probed. Create their nodes before other services.
+	ebegin "Populating Monterey device nodes"
+	/sbin/mdev -s
+	eend $?
+}

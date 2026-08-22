@@ -35,7 +35,24 @@ if [ -z "$system_device" ] || [ ! -b "$system_device" ]; then
 	exit 1
 fi
 
-layout=$(fdisk -l "$system_device" 2>/dev/null)
+# A short-lived loop view is safe for GPT metadata and makes fdisk interpret
+# the embedded LBAs as 512-byte sectors. Never use its partition nodes for
+# filesystem I/O on this kernel; detach it before creating dm-linear targets.
+layout_loop=$(losetup --find --show --read-only --direct-io=on \
+	--sector-size 512 "$system_device") || {
+	log "Monterey subpartition mapper: failed to create GPT metadata view"
+	exit 1
+}
+layout=$(fdisk -l "$layout_loop" 2>/dev/null)
+layout_status=$?
+if ! losetup -d "$layout_loop"; then
+	log "Monterey subpartition mapper: failed to detach GPT metadata view"
+	exit 1
+fi
+if [ "$layout_status" -ne 0 ]; then
+	log "Monterey subpartition mapper: failed to read embedded GPT"
+	exit 1
+fi
 boot_extent=$(printf '%s\n' "$layout" | awk '$1 == 1 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $2, $3; exit }')
 root_extent=$(printf '%s\n' "$layout" | awk '$1 == 2 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ { print $2, $3; exit }')
 

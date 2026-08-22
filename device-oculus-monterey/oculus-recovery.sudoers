@@ -1,3 +1,7 @@
-# Permit an authenticated wheel user to request only the safe bootloader reboot.
-%wheel ALL=(root) NOPASSWD: /usr/sbin/oculus-reboot-bootloader
-
+# Permit an authenticated wheel user to request only bounded device controls.
+Cmnd_Alias OCULUS_CONTROLS = /usr/sbin/oculus-reboot-bootloader, \
+    /usr/sbin/oculus-refresh-rate status, \
+    /usr/sbin/oculus-refresh-rate 72, \
+    /usr/sbin/oculus-refresh-rate 90, \
+    /usr/sbin/oculus-refresh-rate uncapped
+%wheel ALL=(root) NOPASSWD: OCULUS_CONTROLS

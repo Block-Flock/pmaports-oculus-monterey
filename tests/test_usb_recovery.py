@@ -22,6 +22,8 @@ SUBPARTITION_MAPPER = (
     ROOT / "device-oculus-monterey" / "oculus-map-pmos-subpartitions"
 )
 FLASH_SLOT_B = ROOT / "scripts" / "flash-verified-slot-b"
+MDEV_SERVICE = ROOT / "device-oculus-monterey" / "oculus-mdev.initd"
+RECOVERY_SUDOERS = ROOT / "device-oculus-monterey" / "oculus-recovery.sudoers"
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -119,6 +121,8 @@ class UsbRecoveryTest(unittest.TestCase):
         self.assertIn('"$mdev_command" -s', mapper)
         self.assertIn("OCULUS_SYSTEM_DEVICE", mapper)
         self.assertIn('PARTNAME=system_b', mapper)
+        self.assertIn('--sector-size 512 "$system_device"', mapper)
+        self.assertIn('losetup -d "$layout_loop"', mapper)
         self.assertIn('dmsetup create "$name" --table', mapper)
         self.assertIn("start % 8", mapper)
         self.assertIn("length % 8", mapper)
@@ -136,6 +140,18 @@ class UsbRecoveryTest(unittest.TestCase):
         installer = FLASH_SLOT_B.read_text()
         self.assertIn('boot_size=$(stat -Lc %s "$boot")', installer)
         self.assertIn('system_size=$(stat -Lc %s "$system")', installer)
+
+    def test_normal_system_uses_foreground_mdev_daemon(self) -> None:
+        service = MDEV_SERVICE.read_text()
+        self.assertIn('command_args="-df"', service)
+        self.assertIn('/sbin/mdev -s', service)
+        self.assertIn('before udev udev-trigger', service)
+
+    def test_wheel_refresh_control_is_argument_bounded(self) -> None:
+        policy = RECOVERY_SUDOERS.read_text()
+        self.assertIn('/usr/sbin/oculus-refresh-rate 72', policy)
+        self.assertIn('/usr/sbin/oculus-refresh-rate 90', policy)
+        self.assertNotIn('/usr/sbin/oculus-refresh-rate *', policy)
 
 
 if __name__ == "__main__":

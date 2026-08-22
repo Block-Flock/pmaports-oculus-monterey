@@ -43,12 +43,21 @@ cat /etc/os-release
 
 The expected root filesystem must be mounted from
 `/dev/mapper/oculus-pmos-root`, whose linear extent is inside `system_b`, not
-Android's verified-root `dm-0`. The 512-byte loop-sector override is not a
-fallback on this downstream kernel: although it parses the GPT, live testing
-showed out-of-range I/O, while the equivalent read-only linear mapping mounted
-the ext4 filesystem successfully. Keep the exact `boot_b` and `system_b`
+Android's verified-root `dm-0`. The 512-byte loop-sector override is used only
+for reading GPT metadata on this downstream kernel. Live testing showed
+out-of-range filesystem I/O through its partition nodes, while the equivalent
+read-only linear mapping mounted the ext4 filesystem successfully. Keep the
+exact `boot_b` and `system_b`
 backup hashes outside the repository. Never write `abl`, `xbl`, or another
 boot-chain partition.
+
+On-device validation reached this gate with the matching boot/system pair: the
+metadata-only loop exposed both GPT extents, both linear mappings matched the
+command-line UUIDs, `pmOS_root` mounted read-write as `/`, OpenRC completed, and
+authenticated SSH accepted commands over USB NCM. The first normal-system boot
+also proved that udev cannot repopulate `/dev` without devtmpfs; the device
+package now starts a foreground mdev daemon and performs an early full scan.
+That persistent mdev service still requires a repeated cold-boot check.
 
 At any pmOS shell, root can return directly to the bootloader with
 `oculus-reboot-bootloader`. From the authenticated host control path, use

@@ -4,11 +4,14 @@ This is an early downstream-kernel port for the original Oculus Quest. It is
 not yet a complete Android replacement image and it does not alter the boot
 chain.
 
-The current verified milestone is a root Linux initramfs shell over stable USB
-NCM, with UFS block discovery and a read-only mount of the embedded pmOS root
-filesystem proven on-device. The matching normal rootfs handoff, visible
-framebuffer output, Wi-Fi, Bluetooth, audio, tracking, passthrough, and a VR
-desktop remain separate validation milestones until they pass on-device tests.
+The current verified milestone is an installed postmarketOS edge system with
+its embedded root filesystem mounted read-write, OpenRC running, and
+authenticated SSH reachable over stable USB NCM. The initramfs UFS mappings
+and matching UUID handoff were proven on-device. The framebuffer reports its
+2880x1600 90 Hz mode, but visible compositor output, measured 72/90
+presentation, persistent normal-system device nodes, Wi-Fi, Bluetooth, audio,
+tracking, passthrough, and a VR desktop remain separate validation milestones
+until they pass on-device tests.
 
 ## Display rate
 
@@ -61,11 +64,13 @@ Android slot selection normally maps `system_b` directly as the root
 filesystem. A pmOS system image instead places a small GPT inside `system_b`:
 partition 1 is `pmOS_boot` and partition 2 is `pmOS_root`. This stock kernel
 reports UFS with 4096-byte logical sectors and has no devtmpfs filesystem,
-while the embedded GPT uses 512-byte LBAs. Its old loop driver misaddresses I/O
-when asked to override that sector size. The device initramfs hook therefore
-runs an explicit `mdev` scan and creates validated, 4096-aligned `dm-linear`
-mappings for the two GPT extents before generic pmOS root discovery. It checks
-the physical bounds and the `pmOS_boot`/`pmOS_root` labels before continuing.
+while the embedded GPT uses 512-byte LBAs. Its old loop driver misaddresses
+filesystem I/O when asked to override that sector size. The device initramfs
+hook therefore runs an explicit `mdev` scan, uses a read-only 512-byte loop view
+only to decode the GPT metadata, detaches it, then creates validated,
+4096-aligned `dm-linear` mappings for the two extents before generic pmOS root
+discovery. It checks the physical bounds and the
+`pmOS_boot`/`pmOS_root` labels before continuing.
 The boot image and system image must come from the same `pmbootstrap install`;
 mixing artifacts from different installs leaves UUIDs that cannot match.
 
@@ -198,10 +203,11 @@ scripts/return-to-slot-a
 
 The repository's USB and flash helpers contain no ABL or XBL write target.
 
-After the installed system starts, the device package keeps the NCM link at
-`172.16.42.1`, serves the host `172.16.42.2`, and starts SSH. An authenticated
-wheel user may invoke only the dedicated bootloader reboot helper without a
-second password prompt. From the host:
+After the installed system starts, the device package runs BusyBox mdev for the
+stock kernel (which has no devtmpfs), keeps the NCM link at `172.16.42.1`,
+serves the host `172.16.42.2`, and starts SSH. An authenticated wheel user may
+invoke only the dedicated bootloader helper and exact refresh-rate selector
+arguments without a second password prompt. From the host:
 
 ```sh
 scripts/oculus-usb-control status
