@@ -1,0 +1,77 @@
+#!/bin/sh
+set -eu
+
+socket=oculus-vr-0
+runtime_dir=${XDG_RUNTIME_DIR:-}
+
+usage() {
+	echo "usage: oculus-vr {start|stop|status}" >&2
+	exit 2
+}
+
+[ "$#" -eq 1 ] || usage
+[ -n "$runtime_dir" ] || {
+	echo "oculus-vr: XDG_RUNTIME_DIR is not set" >&2
+	exit 1
+}
+
+pidfile="$runtime_dir/oculus-kwin-vr.pid"
+logfile="$runtime_dir/oculus-kwin-vr.log"
+
+running_pid() {
+	[ -r "$pidfile" ] || return 1
+	pid=$(cat "$pidfile")
+	case "$pid" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	[ -r "/proc/$pid/comm" ] || return 1
+	[ "$(cat "/proc/$pid/comm")" = kwin_wayland ] || return 1
+	kill -0 "$pid" 2>/dev/null
+}
+
+case "$1" in
+	start)
+		[ -n "${WAYLAND_DISPLAY:-}" ] || {
+			echo "oculus-vr: start this from the labwc session" >&2
+			exit 1
+		}
+		command -v kwin_wayland >/dev/null || {
+			echo "oculus-vr: kwin_wayland is not installed" >&2
+			exit 1
+		}
+		if running_pid; then
+			echo "KWin VR is already running (pid $pid, socket $socket)"
+			exit 0
+		fi
+		kwin_wayland \
+			--wayland-display "$WAYLAND_DISPLAY" \
+			--socket "$socket" \
+			--width 1440 --height 800 --fullscreen --xwayland \
+			>"$logfile" 2>&1 &
+		pid=$!
+		echo "$pid" >"$pidfile"
+		sleep 1
+		if ! running_pid; then
+			echo "oculus-vr: KWin exited; inspect $logfile" >&2
+			exit 1
+		fi
+		echo "KWin VR started (pid $pid, socket $socket)"
+		;;
+	stop)
+		if ! running_pid; then
+			echo "KWin VR is not running"
+			exit 0
+		fi
+		kill "$pid"
+		echo "KWin VR stop requested (pid $pid)"
+		;;
+	status)
+		if running_pid; then
+			echo "running (pid $pid, socket $socket)"
+		else
+			echo "stopped"
+			exit 1
+		fi
+		;;
+	*) usage ;;
+esac

@@ -25,7 +25,7 @@ It does **not** have a visible desktop or working VR yet.
 | USB recovery | Verified | SSH works over USB NCM and the headset can reboot to its bootloader without ADB. |
 | Display panel | Partly verified | The 2880x1600 framebuffer and 90 Hz panel mode exist; visible pixels and measured presentation rate are still unverified. |
 | GPU | Hardware found | The downstream kernel exposes KGSL, not DRM. The matching v50 Adreno/HWC userspace must be loaded locally from the owner's firmware. |
-| Desktop and OpenXR | In progress | The target is a small KWin Wayland session plus Monado, not the full Plasma desktop. |
+| Desktop and OpenXR | In progress | labwc is the small base desktop; patched KWin runs nested only for VR, with Monado underneath it. |
 | Quest Touch controllers | In progress | They use the SyncBoss/Pulsar radio, not ordinary Bluetooth. Firmware updating will remain disabled. |
 | Tracking and passthrough | Not working | Kernel devices exist, but native Monado interfaces are not implemented yet. |
 | Wi-Fi and audio | Not working | These remain separate bring-up tasks. |
@@ -287,12 +287,18 @@ postmarketOS is running. It never contains a flash or erase operation.
 
 ## VR desktop status
 
-KWin MR !8671 is not a device driver or panel fix. It requires a DRM/KMS
-graphics path, a working OpenXR runtime, Qt Quick 3D XR, and working head and
-controller tracking. This port currently uses the Quest downstream framebuffer
-driver, so the correct order is: boot and display, USB/network recovery,
-firmware-backed sensors and input, DRM/KMS or a dedicated compositor path,
-OpenXR runtime, then KWin VR. Copying the Android Oculus runtime into
+KWin MR !8671 is a KWin plugin, so it cannot be merged into labwc. The planned
+session uses labwc as the lightweight normal desktop and launches patched KWin
+on a separate nested Wayland socket for VR applications. The plugin is not a
+device driver or panel fix: it still requires a working OpenXR runtime, Qt
+Quick 3D XR, stereo presentation, and working head and controller tracking.
+
+Package `postmarketos-ui-oculus-labwc` provides `oculus-labwc-session`,
+`oculus-vr start`, `oculus-vr-run`, and `oculus-vr stop`. With the current
+non-DRM kernel, the base session uses Xorg fbdev plus a Pixman-rendered nested
+labwc as a visible-pixel diagnostic. That path is not expected to reach VR
+frame rates. The production route remains the local v50 Qualcomm HWC/KGSL
+compatibility host, Monado, then nested KWin VR. Copying the Android Oculus runtime into
 postmarketOS is not a reliable substitute because it depends on Android Binder,
 SurfaceFlinger, vendor services, and proprietary runtime interfaces.
 
@@ -304,6 +310,6 @@ is therefore the current candidate for tracking, SyncBoss, and passthrough
 bring-up, while the GCC4 source build remains independently reproducible.
 
 [KWin MR !8671](https://invent.kde.org/plasma/kwin/-/merge_requests/8671)
-remains a later integration candidate after DRM/OpenXR/tracking are working.
+is preserved in the Monterey KWin fork and remains gated on OpenXR and tracking.
 The subsystem-by-subsystem proof gates and current runtime integration order are
 documented in [docs/bringup.md](docs/bringup.md).

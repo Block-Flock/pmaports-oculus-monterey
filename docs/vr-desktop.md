@@ -2,20 +2,40 @@
 
 ## Goal
 
-Boot a small Wayland desktop on Oculus Quest 1, then present that desktop in
-stereo through OpenXR. The first useful session is deliberately smaller than a
+Boot a small labwc desktop on Oculus Quest 1, then present selected desktop
+windows in stereo through OpenXR. The session is deliberately smaller than a
 full Plasma install:
 
-1. KWin with KDE's VR plugin.
-2. A small shell with a launcher, status panel, settings, and recovery action.
-3. Monado as the OpenXR runtime.
-4. A Monterey Monado driver for the panel, headset pose, Touch controllers,
+1. labwc owns the normal desktop, launcher, settings, and recovery actions.
+2. The patched KWin runs nested only when VR mode is requested.
+3. Applications intended for VR connect to KWin's separate Wayland socket.
+4. Monado is the OpenXR runtime used by KWin's VR plugin.
+5. A Monterey Monado driver supplies the panel, headset pose, Touch controllers,
    and eventually passthrough.
 
 The KWin source fork is
 [`Block-Flock/kwin-oculus-monterey`](https://github.com/Block-Flock/kwin-oculus-monterey),
 branch `oculus-vr-desktop`. It currently pins KDE merge request 8671 at commit
 `ccdd46eadbd705c6ea2efb9c5de03e2fe5ec148a`.
+
+## Why there are two compositors
+
+KDE's VR mode is a KWin plugin and uses KWin-private window, input, and scene
+APIs. It cannot be loaded into labwc. Keeping labwc as the base compositor and
+running KWin as a nested Wayland client gives the headset a lightweight normal
+desktop without rewriting the VR plugin.
+
+The packaged commands are:
+
+```sh
+oculus-labwc-session       # start the base desktop
+oculus-vr start            # start nested KWin on oculus-vr-0
+oculus-vr-run APPLICATION  # start an application inside KWin VR
+oculus-vr stop
+```
+
+KWin VR is not started automatically. Until the Monterey Monado driver works,
+starting it can only exercise the nested compositor and failure diagnostics.
 
 ## Why the GPU needs a compatibility layer
 
@@ -31,10 +51,12 @@ repository. The port will discover them from the read-only `system_a` mount,
 verify the supported v50 build, and expose only the files required by an
 isolated Android-graphics compatibility process.
 
-The initial visible-desktop milestone may use Xorg's framebuffer driver and
-software rendering as a diagnostic path. That proves panel presentation and
-input but is not expected to sustain stereo 72 or 90 Hz. Reliable VR requires
-the KGSL/Adreno/HWC compatibility path or a future DRM/MSM kernel port.
+Package `postmarketos-ui-oculus-labwc` implements the initial diagnostic path:
+Xorg scans out through `/dev/fb0`, and labwc runs on wlroots' nested X11 backend
+with Pixman rendering. It proves panel presentation and input but is not
+expected to sustain stereo 72 or 90 Hz. The same labwc session can later run on
+the KGSL/Adreno/HWC compatibility host without changing its menu or KWin VR
+launcher. A future DRM/MSM kernel port would remove both compatibility layers.
 
 ## Refresh-rate ownership
 
@@ -94,7 +116,8 @@ pairing data may be committed or included in an APK.
 
 - [x] Stable slot-B boot and USB recovery.
 - [x] Publish the KWin VR fork at the exact KDE merge-request revision.
-- [ ] Show a framebuffer diagnostic and a basic desktop on the panel.
+- [x] Package a labwc base desktop and guarded nested-KWin launcher.
+- [ ] Show the framebuffer/labwc diagnostic on the panel.
 - [ ] Build and start the patched KWin VR plugin on aarch64.
 - [ ] Start Monado with a Monterey HMD stub and render a stereo test scene.
 - [ ] Present through the v50 Qualcomm graphics compatibility layer.

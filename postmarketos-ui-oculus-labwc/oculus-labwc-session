@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+config_dir=/etc/xdg/oculus-labwc
+
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+	exec labwc -C "$config_dir"
+fi
+
+if [ -n "${DISPLAY:-}" ]; then
+	export WLR_BACKENDS=x11
+	export WLR_RENDERER=pixman
+	export LABWC_UPDATE_ACTIVATION_ENV=1
+	exec labwc -C "$config_dir"
+fi
+
+if [ ! -c /dev/fb0 ]; then
+	echo "oculus-labwc-session: /dev/fb0 is unavailable" >&2
+	exit 1
+fi
+
+exec xinit /usr/libexec/oculus-labwc-xinit -- \
+	/usr/bin/Xorg :0 -configdir /etc/X11/xorg.conf.d -nolisten tcp

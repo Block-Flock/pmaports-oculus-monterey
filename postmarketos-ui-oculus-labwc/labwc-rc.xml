@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <adaptiveSync>no</adaptiveSync>
+    <allowTearing>no</allowTearing>
+  </core>
+  <theme>
+    <name>default</name>
+    <titlebar><layout>icon:iconify,max,close</layout></titlebar>
+    <font place="ActiveWindow"><size>18</size></font>
+    <font place="MenuItem"><size>20</size></font>
+  </theme>
+  <keyboard>
+    <keybind key="W-Return"><action name="Execute"><command>foot</command></action></keybind>
+    <keybind key="W-v"><action name="Execute"><command>oculus-vr start</command></action></keybind>
+  </keyboard>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind>
+    </context>
+  </mouse>
+</labwc_config>

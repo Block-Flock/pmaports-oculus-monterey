@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -gt 0 ] || {
+	echo "usage: oculus-vr-run COMMAND [ARG ...]" >&2
+	exit 2
+}
+
+runtime_dir=${XDG_RUNTIME_DIR:-}
+[ -n "$runtime_dir" ] || {
+	echo "oculus-vr-run: XDG_RUNTIME_DIR is not set" >&2
+	exit 1
+}
+[ -S "$runtime_dir/oculus-vr-0" ] || {
+	echo "oculus-vr-run: KWin VR socket is not available; run: oculus-vr start" >&2
+	exit 1
+}
+
+export WAYLAND_DISPLAY=oculus-vr-0
+exec "$@"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu>
+  <menu id="root-menu" label="Monterey">
+    <item label="Terminal"><action name="Execute"><command>foot</command></action></item>
+    <separator label="Display" />
+    <item label="72 Hz"><action name="Execute"><command>sudo /usr/sbin/oculus-refresh-rate 72</command></action></item>
+    <item label="90 Hz"><action name="Execute"><command>sudo /usr/sbin/oculus-refresh-rate 90</command></action></item>
+    <separator label="VR" />
+    <item label="Start KWin VR"><action name="Execute"><command>oculus-vr start</command></action></item>
+    <item label="Stop KWin VR"><action name="Execute"><command>oculus-vr stop</command></action></item>
+    <separator label="Recovery" />
+    <item label="Reboot to bootloader"><action name="Execute"><command>sudo /usr/sbin/oculus-reboot-bootloader</command></action></item>
+    <item label="Exit desktop"><action name="Exit" /></item>
+  </menu>
+</openbox_menu>

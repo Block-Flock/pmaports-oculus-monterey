@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Oculus labwc
+Comment=Recoverable Quest desktop with optional nested KWin VR
+Exec=dbus-run-session oculus-labwc-session
+Type=Application
+DesktopNames=labwc

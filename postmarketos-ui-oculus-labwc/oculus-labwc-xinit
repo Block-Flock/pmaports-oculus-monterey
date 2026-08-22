@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+export WLR_BACKENDS=x11
+export WLR_RENDERER=pixman
+export LABWC_UPDATE_ACTIVATION_ENV=1
+exec labwc -C /etc/xdg/oculus-labwc
