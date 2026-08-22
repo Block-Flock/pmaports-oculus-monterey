@@ -179,6 +179,27 @@ comes from the controller type reported by SyncBoss. A future shell UI can
 label those types after the Quest 1 and Quest 2 values are verified. It must
 not guess a hand from connection order.
 
+Package revision r21 adds the first desktop-input bridge for already-paired
+controllers. `oculus-controller-input` keeps one stock tool instance active,
+extracts at most two controller IDs from the stock enumerator's strict indexed
+format, and starts read-only stream observers. `oculus-controller-uinput`
+accepts only the documented v50 `button`, `trig`, and `thumbstick` text records:
+the thumbstick moves a relative pointer, fore-trigger or A/X presses the primary
+button, grip or B/Y presses the secondary button, thumbstick-click presses the
+middle button, and the system button sends Escape. Unknown, malformed, and
+non-finite values produce no Linux input event.
+
+This bridge is a bring-up path for labwc and pattern login, not controller pose
+tracking. It does not expose pairing, haptics, calibration writes, or firmware
+updates, and its OpenRC service remains disabled until its enumerator output and
+button mapping have been observed on the headset. Test it manually with:
+
+```sh
+sudo rc-service oculus-controller start
+libinput debug-events
+sudo rc-service oculus-controller stop
+```
+
 Quest 2 controller compatibility is tracked as an experimental follow-up. A
 user-supplied module showed that v50 can pair those controllers after two
 checks in `libsyncboss` are changed. The port will reproduce those changes only

@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=20
+pkgrel=21
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -32,6 +32,8 @@ source="
 	oculus-initramfs-recovery-hook
 	oculus-initramfs-recovery.files
 	oculus-controller
+	oculus-controller-input
+	oculus-controller-uinput.c
 	oculus-controller.initd
 	oculus-reboot-bootloader.c
 	oculus-syncboss-dump.c
@@ -53,6 +55,8 @@ build() {
 		-o oculus-reboot-bootloader "$srcdir/oculus-reboot-bootloader.c"
 	$CC $CPPFLAGS $CFLAGS $LDFLAGS \
 		-o oculus-syncboss-dump "$srcdir/oculus-syncboss-dump.c"
+	$CC $CPPFLAGS $CFLAGS $LDFLAGS \
+		-o oculus-controller-uinput "$srcdir/oculus-controller-uinput.c" -lm
 }
 
 package() {
@@ -61,6 +65,10 @@ package() {
 		"$pkgdir/usr/sbin/oculus-refresh-rate"
 	install -Dm755 "$srcdir/oculus-controller" \
 		"$pkgdir/usr/sbin/oculus-controller"
+	install -Dm755 "$srcdir/oculus-controller-input" \
+		"$pkgdir/usr/sbin/oculus-controller-input"
+	install -Dm755 oculus-controller-uinput \
+		"$pkgdir/usr/sbin/oculus-controller-uinput"
 	install -Dm755 "$srcdir/oculus-controller.initd" \
 		"$pkgdir/etc/init.d/oculus-controller"
 	install -Dm755 oculus-reboot-bootloader \
@@ -117,7 +125,9 @@ sha512sums="
 6532d25a89ba46784ff87dbfd8bf14647c4ac04d86c1582229eb3a430d92d1fc2e409c0810e6d5587d9a3a0968a69d19a3690b745928ff3023c80e350857cbb1  oculus-initramfs-recovery-hook
 910d2a859c5aeb93294c6b65c524c242c9a34378900e390444d3b71aa0bf366c48a1a7f67229faee683bea5ce19d12cd34b4ba0f30caff4470ddf26f484f6a71  oculus-initramfs-recovery.files
 7b0e5292dec5460e05ab205363d9891314bd691fbbdfdb83647bb8ff1590c87a5eefdf3d5724c308ae08b47ae3e954ab7051692217dbecd6cb5bb24fa153c268  oculus-controller
-f3dc6e7bc6d21c9fa6c59592e61513e7aaad820c495db49a7b5a54dd0fb11716b7eedd1240fd9c82441b96e5378ef45b78c48a49a7cd1593003ca50f9f939c36  oculus-controller.initd
+336efb807cb96bb3767c94fd3f604de16987f076811f4dee4bba134013962aaf7b7e5b7f4bd3314975d2b0bf804f26ccd487e590585bff7b41b2b2c4e875a5fe  oculus-controller-input
+15ece6d0706704b3c3f652434889445093078fd19ff410a77fd109cf3e26e2cc84d134f356ce72bb5d40705b69d69c72b4f9ae469469faf3dc09ad3be6e4a256  oculus-controller-uinput.c
+f3e5d62c5d09b126159be1d2d2bffdb8c71ab126b4e6f4fc4c68f79ab496606b3c0f8566c034e8333f936565da433d142681d3622d80ec3da17b25fe91f742b2  oculus-controller.initd
 a7cd382244790ddc038f8c1c61982d660803dba2e27596db421f5ac2399ac0a079041f41c11fdb7762b3a67e7104426e74f6cbb967da2f02162c27125b50672b  oculus-reboot-bootloader.c
 544be24f4a82e7a6bef8adf216884e00e598dcfdbf2bc2a179758f5a8396861e6ebdb542a7a529ce7c9c058281b7d2ec60aeb644cce91938ba7cc1feba22e1ed  oculus-syncboss-dump.c
 1819b4b91373e567200b73d32604e0bd3b658731ecae74ca886137d85d1b7f6d81e0f951461b70f1b560a86fd95dafb0a4e03a7837079fbcb2b812e30f36e96b  oculus-recovery.sudoers

@@ -1,10 +1,9 @@
 #!/sbin/openrc-run
 # shellcheck shell=sh disable=SC2034
 
-name="Oculus Touch controller watcher"
-description="Keep SyncBoss input active and reconnect paired Touch controllers"
-command=/usr/sbin/oculus-controller
-command_args=daemon
+name="Oculus Touch desktop input bridge"
+description="Keep SyncBoss active and expose paired Touch controls through uinput"
+command=/usr/sbin/oculus-controller-input
 command_background=true
 pidfile=/run/oculus-controller.pid
 output_log=/var/log/oculus-controller.log

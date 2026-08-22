@@ -88,6 +88,44 @@ class OculusControllerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(self.calls(), "")
 
+    def test_input_manager_starts_only_two_enumerated_streams(self):
+        controller = self.bin / "controller-manager-mock"
+        controller.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >>\"$OCULUS_TEST_LOG\"\n"
+            "case $1 in\n"
+            "daemon) trap 'exit 0' TERM INT; while :; do sleep 1; done;;\n"
+            "list) printf ' 0: 0123456789abcdef left connected\\n'\n"
+            "      printf ' 1: fedcba9876543210 right connected\\n'\n"
+            "      printf ' 2: aaaaaaaaaaaaaaaa left connected\\n';;\n"
+            "stream) printf '\\tthumbstick : {x:0.500, y:0.000}\\n';;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        controller.chmod(0o755)
+        bridge = self.bin / "bridge-mock"
+        bridge.write_text("#!/bin/sh\ncat >/dev/null\n", encoding="utf-8")
+        bridge.chmod(0o755)
+        manager = ROOT / "device-oculus-monterey" / "oculus-controller-input"
+        result = subprocess.run(
+            [str(manager), "--once"],
+            env=self.env
+            | {
+                "OCULUS_CONTROLLER_COMMAND": str(controller),
+                "OCULUS_CONTROLLER_BRIDGE": str(bridge),
+                "OCULUS_CONTROLLER_START_DELAY": "0",
+            },
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls()
+        self.assertIn("stream 0x0123456789abcdef", calls)
+        self.assertIn("stream 0xfedcba9876543210", calls)
+        self.assertNotIn("stream 0xaaaaaaaaaaaaaaaa", calls)
+
 
 if __name__ == "__main__":
     unittest.main()
