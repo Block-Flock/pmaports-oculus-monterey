@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=16
+pkgrel=17
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -31,6 +31,8 @@ source="
 	oculus-initramfs-recovery-cleanup
 	oculus-initramfs-recovery-hook
 	oculus-initramfs-recovery.files
+	oculus-controller
+	oculus-controller.initd
 	oculus-reboot-bootloader.c
 	oculus-recovery.sudoers
 	oculus-refresh-rate
@@ -54,6 +56,10 @@ package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm755 "$srcdir/oculus-refresh-rate" \
 		"$pkgdir/usr/sbin/oculus-refresh-rate"
+	install -Dm755 "$srcdir/oculus-controller" \
+		"$pkgdir/usr/sbin/oculus-controller"
+	install -Dm755 "$srcdir/oculus-controller.initd" \
+		"$pkgdir/etc/init.d/oculus-controller"
 	install -Dm755 oculus-reboot-bootloader \
 		"$pkgdir/usr/sbin/oculus-reboot-bootloader"
 	install -Dm755 "$srcdir/oculus-usb-recovery" \
@@ -105,6 +111,8 @@ sha512sums="
 771ba9e1003986666e8d094c0c4b706d2c1ba90aa86716f23dfc90a55b09e916786102708943d251141e6052a82dae33a940a0a9f177fec06a4261732fd49f42  oculus-initramfs-recovery-cleanup
 6532d25a89ba46784ff87dbfd8bf14647c4ac04d86c1582229eb3a430d92d1fc2e409c0810e6d5587d9a3a0968a69d19a3690b745928ff3023c80e350857cbb1  oculus-initramfs-recovery-hook
 910d2a859c5aeb93294c6b65c524c242c9a34378900e390444d3b71aa0bf366c48a1a7f67229faee683bea5ce19d12cd34b4ba0f30caff4470ddf26f484f6a71  oculus-initramfs-recovery.files
+7b0e5292dec5460e05ab205363d9891314bd691fbbdfdb83647bb8ff1590c87a5eefdf3d5724c308ae08b47ae3e954ab7051692217dbecd6cb5bb24fa153c268  oculus-controller
+f3dc6e7bc6d21c9fa6c59592e61513e7aaad820c495db49a7b5a54dd0fb11716b7eedd1240fd9c82441b96e5378ef45b78c48a49a7cd1593003ca50f9f939c36  oculus-controller.initd
 a7cd382244790ddc038f8c1c61982d660803dba2e27596db421f5ac2399ac0a079041f41c11fdb7762b3a67e7104426e74f6cbb967da2f02162c27125b50672b  oculus-reboot-bootloader.c
 b123b171baeba739e960aa2f5037e5697b0d2c7090b38f9f7eef5c03659011f90303882a85f4ed81af1315da9089737da83092a5f28e8515f7882d53002a5f38  oculus-recovery.sudoers
 03649b9cb60f549d052c910057b5472f5285cd8371fa83404e106e4c2f16acc3157364c631378889a2e47acd654adfeca83312c66f8b19eed7468a33819fe4f6  oculus-refresh-rate

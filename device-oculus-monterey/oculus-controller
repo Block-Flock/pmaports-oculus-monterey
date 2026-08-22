@@ -1,0 +1,165 @@
+#!/bin/sh
+
+# Safe command gateway for the owner-supplied v50 SyncBoss input utility.
+# The utility and Android runtime stay on the read-only stock system partition.
+
+set -eu
+
+stock_root=${OCULUS_STOCK_ROOT:-/vendor/oculus-system}
+device_root=${OCULUS_DEVICE_ROOT:-/dev}
+rc_command=${OCULUS_RC_COMMAND:-rc-service}
+
+tool=${OCULUS_CONTROLLER_TOOL:-$stock_root/system/vendor/bin/syncboss_input_tool}
+linker=${OCULUS_ANDROID_LINKER:-$stock_root/apex/com.android.runtime/bin/linker64}
+
+log() {
+	printf '%s\n' "oculus-controller: $*" >&2
+}
+
+require_file() {
+	if [ ! -f "$1" ]; then
+		log "required stock v50 file is missing: $1"
+		return 1
+	fi
+}
+
+check_runtime() {
+	require_file "$tool"
+	require_file "$linker"
+	for node in syncboss0 syncboss_stream0 syncboss_control0; do
+		if [ ! -e "$device_root/$node" ]; then
+			log "SyncBoss device is missing: $device_root/$node"
+			return 1
+		fi
+	done
+}
+
+run_tool() {
+	check_runtime
+	LD_LIBRARY_PATH="$stock_root/apex/com.android.runtime/lib64/bionic:$stock_root/system/lib64:$stock_root/system/vendor/lib64" \
+	SYNCBOSS_DISABLE_UART_LOGGING_THREAD=1 \
+	exec "$linker" "$tool" "$@"
+}
+
+valid_device_id() {
+	case $1 in
+	0x*)
+		digits=${1#0x}
+		[ -n "$digits" ] || return 1
+		case $digits in *[!0-9a-fA-F]*) return 1 ;; esac
+		;;
+	*)
+		[ -n "$1" ] || return 1
+		case $1 in *[!0-9]*) return 1 ;; esac
+		;;
+	esac
+}
+
+pair_device() {
+	device_id=$1
+	if ! valid_device_id "$device_id"; then
+		log "device id must be hexadecimal (0x...) or decimal"
+		return 2
+	fi
+
+	# Pairing requires Pulsar wireless to leave beacon mode. Stop the passive
+	# watcher if it is running, and restore it even when pairing fails.
+	was_running=false
+	if "$rc_command" oculus-controller status >/dev/null 2>&1; then
+		was_running=true
+		"$rc_command" oculus-controller stop
+	fi
+	trap '[ "$was_running" = false ] || "$rc_command" oculus-controller start' EXIT
+	if (run_tool --no-prompt --pair "$device_id"); then
+		result=0
+	else
+		result=$?
+	fi
+	trap - EXIT
+	[ "$was_running" = false ] || "$rc_command" oculus-controller start
+	return "$result"
+}
+
+usage() {
+	cat <<'EOF'
+usage: oculus-controller COMMAND [ARGUMENTS]
+
+Safe commands:
+  status                  verify the stock runtime and SyncBoss devices
+  list                    list paired controllers without taking ownership
+  scan                    list controllers advertising for pairing
+  watch                   watch controller connect/disconnect events
+  pair DEVICE_ID          pair one advertising controller
+  stream DEVICE_ID        print normalized input samples every 16 ms
+  battery DEVICE_ID       read controller battery voltage
+  sleep DEVICE_ID         place one controller into low power mode
+  haptic DEVICE_ID LEVEL  set haptic amplitude (0.0 through 1.0)
+
+There is intentionally no raw-command or controller-firmware-update mode.
+EOF
+}
+
+command=${1:-}
+case $command in
+status)
+	check_runtime
+	printf '%s\n' "stock-runtime=ready" "syncboss=ready"
+	;;
+list)
+	run_tool --observe --list
+	;;
+scan)
+	run_tool --list-advertising
+	;;
+watch)
+	run_tool --observe --list-watch-and-enum
+	;;
+daemon)
+	run_tool --list-watch-and-enum
+	;;
+pair)
+	[ "$#" -eq 2 ] || { usage >&2; exit 2; }
+	pair_device "$2"
+	;;
+stream)
+	if [ "$#" -ne 2 ] || ! valid_device_id "$2"; then
+		usage >&2
+		exit 2
+	fi
+	run_tool --observe --print-every-ms 16 --stream "$2"
+	;;
+battery)
+	if [ "$#" -ne 2 ] || ! valid_device_id "$2"; then
+		usage >&2
+		exit 2
+	fi
+	run_tool --observe --get-battery-voltage "$2"
+	;;
+sleep)
+	if [ "$#" -ne 2 ] || ! valid_device_id "$2"; then
+		usage >&2
+		exit 2
+	fi
+	run_tool --shutdown "$2"
+	;;
+haptic)
+	if [ "$#" -ne 3 ] || ! valid_device_id "$2"; then
+		usage >&2
+		exit 2
+	fi
+	if ! awk -v value="$3" 'BEGIN {
+		exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value >= 0 && value <= 1)
+	}'; then
+		log "haptic level must be between 0.0 and 1.0"
+		exit 2
+	fi
+	run_tool --set-haptic "$2" "$3"
+	;;
+-h|--help|help)
+	usage
+	;;
+*)
+	usage >&2
+	exit 2
+	;;
+esac

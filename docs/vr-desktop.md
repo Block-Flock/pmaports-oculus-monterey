@@ -58,6 +58,18 @@ The planned bridge has two parts:
 - An unprivileged shell client for status, left/right pairing, battery,
   reconnect, and haptic tests.
 
+Package revision r17 includes the first strict command gateway. It runs the
+owner's `syncboss_input_tool` with the Android linker directly from the
+read-only slot-A mount and accepts only status, list, scan, watch, pair,
+stream, battery, sleep, and bounded-haptic operations. The accompanying
+OpenRC watcher is packaged but is not enabled by default until passive
+enumeration and sleep/wake have passed an on-headset test.
+
+Pairing currently selects a discovered hardware device ID; left/right mapping
+comes from the controller type reported by SyncBoss. A future shell UI can
+label those types after the Quest 1 and Quest 2 values are verified. It must
+not guess a hand from connection order.
+
 Quest 2 controller compatibility is tracked as an experimental follow-up. A
 user-supplied module showed that v50 can pair those controllers after two
 checks in `libsyncboss` are changed. The port will reproduce those changes only
