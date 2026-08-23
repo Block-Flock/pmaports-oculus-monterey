@@ -16,13 +16,21 @@ class OculusControllerTests(unittest.TestCase):
         self.stock = root / "stock"
         self.devices = root / "dev"
         self.bin = root / "bin"
+        self.runtime = root / "run"
         self.log = root / "calls.log"
         self.bin.mkdir()
+        self.runtime.mkdir()
         self.devices.mkdir()
         for name in ("syncboss0", "syncboss_stream0", "syncboss_control0"):
             (self.devices / name).touch()
         tool = self.stock / "system/vendor/bin/syncboss_input_tool"
-        linker = self.stock / "apex/com.android.runtime/bin/linker64"
+        # This is the layout on the untouched v50 system partition. Android's
+        # usual /apex/com.android.runtime path exists only after Android mounts
+        # the APEX payload.
+        linker = (
+            self.stock
+            / "system/apex/com.android.runtime.release/bin/linker64"
+        )
         tool.parent.mkdir(parents=True)
         linker.parent.mkdir(parents=True)
         tool.touch()
@@ -43,6 +51,7 @@ class OculusControllerTests(unittest.TestCase):
             "OCULUS_DEVICE_ROOT": str(self.devices),
             "OCULUS_RC_COMMAND": str(rc),
             "OCULUS_TEST_LOG": str(self.log),
+            "OCULUS_CONTROLLER_RUNTIME_DIR": str(self.runtime),
         }
 
     def tearDown(self):
@@ -64,6 +73,14 @@ class OculusControllerTests(unittest.TestCase):
         result = self.run_script("status")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("stock-runtime=ready", result.stdout)
+
+    def test_legacy_logical_apex_layout_remains_supported(self):
+        release = self.stock / "system/apex/com.android.runtime.release"
+        legacy = self.stock / "apex/com.android.runtime"
+        legacy.parent.mkdir(parents=True)
+        release.rename(legacy)
+        result = self.run_script("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_list_is_observe_only(self):
         result = self.run_script("list")
@@ -125,6 +142,55 @@ class OculusControllerTests(unittest.TestCase):
         self.assertIn("stream 0x0123456789abcdef", calls)
         self.assertIn("stream 0xfedcba9876543210", calls)
         self.assertNotIn("stream 0xaaaaaaaaaaaaaaaa", calls)
+
+    def test_input_manager_reaps_stream_pipeline_children(self):
+        producer_pids = pathlib.Path(self.tempdir.name) / "producer.pids"
+        consumer_pids = pathlib.Path(self.tempdir.name) / "consumer.pids"
+        controller = self.bin / "controller-lifecycle-mock"
+        controller.write_text(
+            "#!/bin/sh\n"
+            "case $1 in\n"
+            "daemon) trap 'exit 0' TERM INT; while :; do sleep 1; done;;\n"
+            "list) printf ' 0: 0123456789abcdef left connected\\n';;\n"
+            "stream) echo $$ >>\"$OCULUS_PRODUCER_PIDS\"; "
+            "        trap 'exit 0' TERM INT; while :; do sleep 1; done;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        controller.chmod(0o755)
+        bridge = self.bin / "bridge-lifecycle-mock"
+        bridge.write_text(
+            "#!/bin/sh\n"
+            "echo $$ >>\"$OCULUS_CONSUMER_PIDS\"\n"
+            "trap 'exit 0' TERM INT\n"
+            "cat >/dev/null\n",
+            encoding="utf-8",
+        )
+        bridge.chmod(0o755)
+        manager = ROOT / "device-oculus-monterey" / "oculus-controller-input"
+        result = subprocess.run(
+            [str(manager), "--once"],
+            env=self.env
+            | {
+                "OCULUS_CONTROLLER_COMMAND": str(controller),
+                "OCULUS_CONTROLLER_BRIDGE": str(bridge),
+                "OCULUS_CONTROLLER_START_DELAY": "0",
+                "OCULUS_PRODUCER_PIDS": str(producer_pids),
+                "OCULUS_CONSUMER_PIDS": str(consumer_pids),
+            },
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pids = [
+            int(value)
+            for path in (producer_pids, consumer_pids)
+            for value in path.read_text().splitlines()
+        ]
+        self.assertTrue(pids)
+        self.assertTrue(all(not pathlib.Path(f"/proc/{pid}").exists() for pid in pids))
 
 
 if __name__ == "__main__":

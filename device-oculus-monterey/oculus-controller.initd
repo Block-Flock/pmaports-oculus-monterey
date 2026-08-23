@@ -8,8 +8,9 @@ command_background=true
 pidfile=/run/oculus-controller.pid
 output_log=/var/log/oculus-controller.log
 error_log=/var/log/oculus-controller.log
+retry="TERM/5/KILL/5"
 
 depend() {
-	need oculus-stock-firmware
+	need oculus-stock-runtime
 	after oculus-mdev
 }

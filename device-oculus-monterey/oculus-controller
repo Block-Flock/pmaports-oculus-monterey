@@ -5,12 +5,13 @@
 
 set -eu
 
-stock_root=${OCULUS_STOCK_ROOT:-/vendor/oculus-system}
+stock_root=${OCULUS_STOCK_ROOT:-/run/oculus-stock-runtime}
 device_root=${OCULUS_DEVICE_ROOT:-/dev}
 rc_command=${OCULUS_RC_COMMAND:-rc-service}
 
 tool=${OCULUS_CONTROLLER_TOOL:-$stock_root/system/vendor/bin/syncboss_input_tool}
-linker=${OCULUS_ANDROID_LINKER:-$stock_root/apex/com.android.runtime/bin/linker64}
+linker=${OCULUS_ANDROID_LINKER:-}
+runtime_root=${OCULUS_ANDROID_RUNTIME_ROOT:-}
 
 log() {
 	printf '%s\n' "oculus-controller: $*" >&2
@@ -23,8 +24,34 @@ require_file() {
 	fi
 }
 
+discover_android_runtime() {
+	if [ -n "$linker" ]; then
+		return 0
+	fi
+
+	# A running Android system bind-mounts the runtime APEX at
+	# /apex/com.android.runtime.  An offline system partition instead contains
+	# the extracted payload below /system/apex, and Oculus v50 names its release
+	# payload com.android.runtime.release.
+	for candidate in \
+		"$stock_root/system/apex/com.android.runtime.release" \
+		"$stock_root/system/apex/com.android.runtime" \
+		"$stock_root/apex/com.android.runtime"
+	do
+		if [ -f "$candidate/bin/linker64" ]; then
+			runtime_root=$candidate
+			linker=$candidate/bin/linker64
+			return 0
+		fi
+	done
+
+	log "Android runtime linker was not found in the read-only stock system"
+	return 1
+}
+
 check_runtime() {
 	require_file "$tool"
+	discover_android_runtime
 	require_file "$linker"
 	for node in syncboss0 syncboss_stream0 syncboss_control0; do
 		if [ ! -e "$device_root/$node" ]; then
@@ -36,7 +63,12 @@ check_runtime() {
 
 run_tool() {
 	check_runtime
-	LD_LIBRARY_PATH="$stock_root/apex/com.android.runtime/lib64/bionic:$stock_root/system/lib64:$stock_root/system/vendor/lib64" \
+	if [ -n "${OCULUS_ANDROID_RUNTIME_ROOT:-}" ]; then
+		runtime_root=$OCULUS_ANDROID_RUNTIME_ROOT
+	elif [ -z "$runtime_root" ]; then
+		runtime_root=${linker%/bin/linker64}
+	fi
+	LD_LIBRARY_PATH="$runtime_root/lib64/bionic:$runtime_root/lib64:$stock_root/system/lib64:$stock_root/system/vendor/lib64" \
 	SYNCBOSS_DISABLE_UART_LOGGING_THREAD=1 \
 	exec "$linker" "$tool" "$@"
 }

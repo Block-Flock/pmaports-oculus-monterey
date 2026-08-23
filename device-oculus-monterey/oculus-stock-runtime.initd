@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+
+description="Expose the stock Android userspace through a temporary read-only executable bind"
+
+depend() {
+	need oculus-stock-firmware
+	before oculus-controller
+}
+
+start() {
+	ebegin "Exposing the stock Android controller runtime"
+	/usr/sbin/oculus-stock-runtime start
+	eend $?
+}
+
+stop() {
+	ebegin "Hiding the stock Android controller runtime"
+	/usr/sbin/oculus-stock-runtime stop
+	eend $?
+}

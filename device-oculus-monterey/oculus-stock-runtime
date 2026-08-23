@@ -1,0 +1,98 @@
+#!/bin/sh
+
+# Create a narrow executable view of the untouched Android system tree for the
+# owner-supplied SyncBoss userspace.  The authoritative slot-A mount remains
+# read-only, nodev, nosuid, and noexec.
+
+set -eu
+
+system_mount=${OCULUS_SYSTEM_MOUNT:-/vendor/oculus-system}
+runtime_root=${OCULUS_STOCK_RUNTIME_ROOT:-/run/oculus-stock-runtime}
+runtime_mount=$runtime_root/system
+mounts_file=${OCULUS_MOUNTS_FILE:-/proc/mounts}
+mount_command=${OCULUS_MOUNT_COMMAND:-mount}
+umount_command=${OCULUS_UMOUNT_COMMAND:-umount}
+
+log() {
+	printf '%s\n' "oculus-stock-runtime: $*"
+}
+
+mounted_options() {
+	awk -v target="$1" '$2 == target { print $4; exit }' "$mounts_file"
+}
+
+has_option() {
+	case ,$1, in
+	*,"$2",*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+same_tree() {
+	[ "$(stat -c '%d:%i' "$1")" = "$(stat -c '%d:%i' "$2")" ]
+}
+
+verify_source() {
+	options=$(mounted_options "$system_mount")
+	if [ -z "$options" ] || ! has_option "$options" ro || ! has_option "$options" noexec; then
+		log "$system_mount must be mounted read-only and noexec"
+		return 1
+	fi
+	[ -d "$system_mount/system" ] || {
+		log "stock Android system directory is missing"
+		return 1
+	}
+}
+
+verify_runtime() {
+	options=$(mounted_options "$runtime_mount")
+	if [ -z "$options" ] || ! has_option "$options" ro || \
+	   ! has_option "$options" nosuid || ! has_option "$options" nodev || \
+	   has_option "$options" noexec; then
+		log "$runtime_mount is not a read-only, nodev, nosuid executable bind"
+		return 1
+	fi
+	same_tree "$system_mount/system" "$runtime_mount" || {
+		log "$runtime_mount does not reference the stock system tree"
+		return 1
+	}
+}
+
+start_runtime() {
+	verify_source
+	mkdir -p "$runtime_mount"
+	if [ -n "$(mounted_options "$runtime_mount")" ]; then
+		verify_runtime
+		return
+	fi
+	"$mount_command" --bind "$system_mount/system" "$runtime_mount"
+	"$mount_command" -o remount,bind,ro,nosuid,nodev,exec "$runtime_mount"
+	if ! verify_runtime; then
+		"$umount_command" "$runtime_mount" || true
+		return 1
+	fi
+	log "stock Android runtime is available through a temporary read-only bind"
+}
+
+stop_runtime() {
+	[ -n "$(mounted_options "$runtime_mount")" ] || return 0
+	if ! same_tree "$system_mount/system" "$runtime_mount"; then
+		log "refusing to unmount an unexpected filesystem at $runtime_mount"
+		return 1
+	fi
+	"$umount_command" "$runtime_mount"
+}
+
+case ${1:-start} in
+start) start_runtime ;;
+stop) stop_runtime ;;
+status)
+	verify_source
+	verify_runtime
+	printf 'runtime=%s\n' "$runtime_mount"
+	;;
+*)
+	echo "usage: ${0##*/} {start|stop|status}" >&2
+	exit 2
+	;;
+esac

@@ -206,19 +206,26 @@ reason to write an unverified command to SyncBoss. Captures can contain device
 timing and controller identifiers, so redact them before attaching them to a
 public issue.
 
-Package revision r17 includes the first strict command gateway. It runs the
-owner's `syncboss_input_tool` with the Android linker directly from the
-read-only slot-A mount and accepts only status, list, scan, watch, pair,
-stream, battery, sleep, and bounded-haptic operations. The accompanying
-OpenRC watcher is packaged but is not enabled by default until passive
-enumeration and sleep/wake have passed an on-headset test.
+Package revision r28 includes the strict command gateway and the runtime mount
+it needs. The authoritative slot-A mount stays `ro,nosuid,nodev,noexec`.
+`oculus-stock-runtime` bind-mounts only its `system/` directory at
+`/run/oculus-stock-runtime/system`, then makes that temporary view
+`ro,nosuid,nodev,exec`. This permits the owner's v50 linker and
+`syncboss_input_tool` to run without remounting or writing Android. The gateway
+accepts only status, list, scan, watch, pair, stream, battery, sleep, and
+bounded-haptic operations.
+
+The runtime service discovers both the extracted v50
+`system/apex/com.android.runtime.release` layout and Android's logical
+`apex/com.android.runtime` layout. The latter exists only after Android mounts
+its APEX packages; it is not present in the raw v50 system partition.
 
 Pairing currently selects a discovered hardware device ID; left/right mapping
 comes from the controller type reported by SyncBoss. A future shell UI can
 label those types after the Quest 1 and Quest 2 values are verified. It must
 not guess a hand from connection order.
 
-Package revision r21 adds the first desktop-input bridge for already-paired
+Package revision r21 added the first desktop-input bridge for already-paired
 controllers. `oculus-controller-input` keeps one stock tool instance active,
 extracts at most two controller IDs from the stock enumerator's strict indexed
 format, and starts read-only stream observers. `oculus-controller-uinput`
@@ -230,12 +237,19 @@ non-finite values produce no Linux input event.
 
 This bridge is a bring-up path for labwc and pattern login, not controller pose
 tracking. It does not expose pairing, haptics, calibration writes, or firmware
-updates. Revision r22 enables its non-blocking OpenRC service for the first
-desktop test image; USB recovery is independent and remains available if the
-stock controller runtime or mapping fails. Inspect it with:
+updates through the background service. Revision r28 fixes the stock runtime
+path and enables its non-blocking OpenRC service. A live test enumerated one
+paired left and one paired right Quest 1 controller while Monado continued to
+own the HMD IMU stream. It also makes every stream worker explicitly own and
+reap its stock-tool and uinput children, with a bounded TERM/KILL shutdown that
+prevents duplicate readers and false OpenRC failures after a service restart.
+Reconnect, input events, sleep/wake, and OpenXR pose still
+require wearer validation. USB recovery is independent and remains
+available if the stock controller runtime or mapping fails. Inspect it with:
 
 ```sh
 sudo rc-service oculus-controller start
+sudo oculus-controller list
 libinput debug-events
 sudo rc-service oculus-controller stop
 ```

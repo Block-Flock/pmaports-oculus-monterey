@@ -142,6 +142,13 @@ suspend, and resume separately. `oculus-stock-firmware` resolves the exact
 `/lib/firmware/postmarketos`. Proprietary modem/DSP firmware remains on the
 preserved Android slot and is not committed to this repository.
 
+The controller bridge needs to execute the owner's Android/Bionic SyncBoss
+tooling. `oculus-stock-runtime` therefore creates a separate bind of only the
+stock `system/` tree at `/run/oculus-stock-runtime/system`, with
+`ro,nosuid,nodev,exec`. It first verifies that the authoritative slot-A mount
+is still read-only and noexec, and refuses an unexpected existing mount. This
+temporary view disappears on reboot and never permits writes to slot A.
+
 The stock Wi-Fi sequence is now partially reproduced and has distinct proof
 gates:
 

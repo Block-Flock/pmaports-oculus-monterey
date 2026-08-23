@@ -7,6 +7,7 @@ controller=${OCULUS_CONTROLLER_COMMAND:-/usr/sbin/oculus-controller}
 bridge=${OCULUS_CONTROLLER_BRIDGE:-/usr/sbin/oculus-controller-uinput}
 interval=${OCULUS_CONTROLLER_RESCAN_SECONDS:-2}
 start_delay=${OCULUS_CONTROLLER_START_DELAY:-1}
+runtime_dir=${OCULUS_CONTROLLER_RUNTIME_DIR:-/run}
 once=false
 case "${1:-}" in
 	'') ;;
@@ -22,15 +23,57 @@ slot2_pid=
 
 cleanup() {
 	for pid in "$slot1_pid" "$slot2_pid" "$owner_pid"; do
-		[ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+		[ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null || true
+	done
+	# Stream workers use a one-second grace period of their own. Give their
+	# traps time to reap both sides of the FIFO before applying the fallback.
+	sleep 2
+	for pid in "$slot1_pid" "$slot2_pid" "$owner_pid"; do
+		[ -z "$pid" ] || kill -KILL "$pid" 2>/dev/null || true
 	done
 	wait 2>/dev/null || true
+	for id in "$slot1_id" "$slot2_id"; do
+		[ -z "$id" ] || rm -f "$runtime_dir/oculus-controller-${id#0x}-$$.fifo"
+	done
 }
 trap cleanup EXIT HUP INT TERM
 
 stream_controller() {
 	id=$1
-	"$controller" stream "$id" | "$bridge"
+	fifo=$runtime_dir/oculus-controller-${id#0x}-$$.fifo
+	producer_pid=
+	consumer_pid=
+	stream_cleanup() {
+		for child in "$producer_pid" "$consumer_pid"; do
+			[ -z "$child" ] || kill -TERM "$child" 2>/dev/null || true
+		done
+		sleep 1
+		for child in "$producer_pid" "$consumer_pid"; do
+			[ -z "$child" ] || kill -KILL "$child" 2>/dev/null || true
+		done
+		for child in "$producer_pid" "$consumer_pid"; do
+			[ -z "$child" ] || wait "$child" 2>/dev/null || true
+		done
+		rm -f "$fifo"
+	}
+	trap stream_cleanup EXIT HUP INT TERM
+	umask 077
+	rm -f "$fifo"
+	mkfifo "$fifo"
+	"$controller" stream "$id" >"$fifo" &
+	producer_pid=$!
+	"$bridge" <"$fifo" &
+	consumer_pid=$!
+	if wait "$producer_pid"; then
+		result=0
+	else
+		result=$?
+	fi
+	stream_cleanup
+	producer_pid=
+	consumer_pid=
+	trap - EXIT HUP INT TERM
+	return "$result"
 }
 
 start_slot() {
