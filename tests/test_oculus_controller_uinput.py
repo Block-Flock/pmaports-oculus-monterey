@@ -91,6 +91,12 @@ class OculusControllerUinputTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def test_linux_44_legacy_uinput_setup_is_present(self):
+        source = SOURCE.read_text()
+        self.assertIn("struct uinput_user_dev legacy", source)
+        self.assertIn("errno != EINVAL && errno != ENOTTY", source)
+        self.assertIn("write(fd, &legacy, sizeof(legacy))", source)
+
 
 if __name__ == "__main__":
     unittest.main()

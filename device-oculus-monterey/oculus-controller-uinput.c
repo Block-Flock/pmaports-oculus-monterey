@@ -145,7 +145,26 @@ create_device(const char *name)
 	setup.id.vendor = 0x2833;
 	setup.id.product = 0x0001;
 	snprintf(setup.name, sizeof(setup.name), "%s", name);
-	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) {
+	if (ioctl(fd, UI_DEV_SETUP, &setup) < 0) {
+		if (errno != EINVAL && errno != ENOTTY) {
+			perror("oculus-controller-uinput: setup");
+			close(fd);
+			return -1;
+		}
+
+		/* UI_DEV_SETUP was added after the Quest's downstream Linux 4.4
+		 * kernel. Fall back to the legacy descriptor write used by older
+		 * uinput implementations. */
+		struct uinput_user_dev legacy = {0};
+		legacy.id = setup.id;
+		snprintf(legacy.name, sizeof(legacy.name), "%s", name);
+		if (write(fd, &legacy, sizeof(legacy)) != (ssize_t)sizeof(legacy)) {
+			perror("oculus-controller-uinput: legacy setup");
+			close(fd);
+			return -1;
+		}
+	}
+	if (ioctl(fd, UI_DEV_CREATE) < 0) {
 		perror("oculus-controller-uinput: create");
 		close(fd);
 		return -1;

@@ -206,7 +206,7 @@ reason to write an unverified command to SyncBoss. Captures can contain device
 timing and controller identifiers, so redact them before attaching them to a
 public issue.
 
-Package revision r28 includes the strict command gateway and the runtime mount
+Package revision r31 includes the strict command gateway and the runtime mount
 it needs. The authoritative slot-A mount stays `ro,nosuid,nodev,noexec`.
 `oculus-stock-runtime` bind-mounts only its `system/` directory at
 `/run/oculus-stock-runtime/system`, then makes that temporary view
@@ -237,14 +237,23 @@ non-finite values produce no Linux input event.
 
 This bridge is a bring-up path for labwc and pattern login, not controller pose
 tracking. It does not expose pairing, haptics, calibration writes, or firmware
-updates through the background service. Revision r28 fixes the stock runtime
+updates through the background service. Revision r31 fixes the stock runtime
 path and enables its non-blocking OpenRC service. A live test enumerated one
 paired left and one paired right Quest 1 controller while Monado continued to
 own the HMD IMU stream. It also makes every stream worker explicitly own and
-reap its stock-tool and uinput children, with a bounded TERM/KILL shutdown that
+reap its stock-tool and uinput children. Signal handlers clean up and then exit
+instead of returning to the manager loop, while a bounded TERM/KILL shutdown
 prevents duplicate readers and false OpenRC failures after a service restart.
-Reconnect, input events, sleep/wake, and OpenXR pose still
-require wearer validation. USB recovery is independent and remains
+The Quest's downstream Linux 4.4 uinput driver predates `UI_DEV_SETUP`, so the
+bridge falls back to the legacy `uinput_user_dev` descriptor write only when
+that ioctl returns `EINVAL` or `ENOTTY`; other setup errors remain fatal.
+Because mdev must create nodes for this devtmpfs-less kernel, the bridge also
+runs the standard udev input rules synchronously for its two event devices.
+This creates the `ID_INPUT_MOUSE=1` database entry that libinput needs without
+starting an incompatible udev daemon. The labwc service waits for the
+controller service, which in turn allows up to 15 seconds for that metadata.
+Reconnect, input events, sleep/wake, and OpenXR pose still require wearer
+validation. USB recovery is independent and remains
 available if the stock controller runtime or mapping fails. Inspect it with:
 
 ```sh

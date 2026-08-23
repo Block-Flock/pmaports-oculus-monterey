@@ -2,11 +2,15 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import time
 import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "device-oculus-monterey" / "oculus-controller"
+INPUT_MANAGER = ROOT / "device-oculus-monterey" / "oculus-controller-input"
+CONTROLLER_SERVICE = ROOT / "device-oculus-monterey" / "oculus-controller.initd"
+LABWC_SERVICE = ROOT / "postmarketos-ui-oculus-labwc" / "oculus-labwc.initd"
 
 
 class OculusControllerTests(unittest.TestCase):
@@ -168,8 +172,8 @@ class OculusControllerTests(unittest.TestCase):
         )
         bridge.chmod(0o755)
         manager = ROOT / "device-oculus-monterey" / "oculus-controller-input"
-        result = subprocess.run(
-            [str(manager), "--once"],
+        process = subprocess.Popen(
+            [str(manager)],
             env=self.env
             | {
                 "OCULUS_CONTROLLER_COMMAND": str(controller),
@@ -179,11 +183,17 @@ class OculusControllerTests(unittest.TestCase):
                 "OCULUS_CONSUMER_PIDS": str(consumer_pids),
             },
             text=True,
-            capture_output=True,
-            timeout=5,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if producer_pids.exists() and consumer_pids.exists():
+                break
+            time.sleep(0.05)
+        process.terminate()
+        _, stderr = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 0, stderr)
         pids = [
             int(value)
             for path in (producer_pids, consumer_pids)
@@ -191,6 +201,14 @@ class OculusControllerTests(unittest.TestCase):
         ]
         self.assertTrue(pids)
         self.assertTrue(all(not pathlib.Path(f"/proc/{pid}").exists() for pid in pids))
+
+    def test_mdev_input_metadata_is_ready_before_labwc(self):
+        manager = INPUT_MANAGER.read_text()
+        controller_service = CONTROLLER_SERVICE.read_text()
+        labwc_service = LABWC_SERVICE.read_text()
+        self.assertIn('test --action=add "$event_path"', manager)
+        self.assertIn("ID_INPUT_MOUSE=1", controller_service)
+        self.assertIn("need dbus localmount elogind oculus-controller", labwc_service)
 
 
 if __name__ == "__main__":
