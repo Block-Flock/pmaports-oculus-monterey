@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=22
+pkgrel=23
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -46,6 +46,7 @@ source="
 	oculus-usb-recovery
 	oculus-usb-recovery.initd
 	oculus-usb-recovery.nmconf
+	90-oculus-monterey-access.rules
 	"
 options="!archcheck !check"
 
@@ -91,6 +92,8 @@ package() {
 		"$pkgdir/etc/init.d/oculus-mdev"
 	install -Dm644 "$srcdir/oculus-usb-recovery.nmconf" \
 		"$pkgdir/etc/NetworkManager/conf.d/20-oculus-usb-recovery.conf"
+	install -Dm644 "$srcdir/90-oculus-monterey-access.rules" \
+		"$pkgdir/usr/lib/udev/rules.d/90-oculus-monterey-access.rules"
 	install -Dm440 "$srcdir/oculus-recovery.sudoers" \
 		"$pkgdir/etc/sudoers.d/oculus-recovery"
 	install -Dm755 "$srcdir/oculus-initramfs-recovery-hook" \
@@ -141,4 +144,5 @@ a7cd382244790ddc038f8c1c61982d660803dba2e27596db421f5ac2399ac0a079041f41c11fdb77
 f7bd069f1b0c5d87c39331040f0b50366b84a4ee3a54013b7b86595708221f3e581079c2037e68047a8c7fe70ad11080111baa82bb292bde593c0774d52ddfd4  oculus-usb-recovery
 0004d214163e59781ea67f185605eb5538440ac47bfdeb6ca8ca050545382f590233516d80d0b7a9b69d6042b3f2d034687b285c82a218185377063a63faec2e  oculus-usb-recovery.initd
 3e1a2337366ac3cc8143ef60012e148b16b05757798686d07d2059f68fa99c58c6a2532b0ef6898354ed1997979a7334c265b74468a5dc28a6528157dae4c79a  oculus-usb-recovery.nmconf
+fc0daa4ace5bd502fe7911228fcc678be9badde59016b795810315a4530852e7215a20f1b2e4f290d5cb31958c7b9c324652e23fd70cb578c8fad13db7d81390  90-oculus-monterey-access.rules
 "

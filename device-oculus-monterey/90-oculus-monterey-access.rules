@@ -1,0 +1,11 @@
+# Allow the graphical session to use the downstream Qualcomm GPU without
+# copying Android's world-writable policy.
+KERNEL=="kgsl", GROUP="video", MODE="0660"
+KERNEL=="kgsl-3d0", GROUP="video", MODE="0660"
+KERNEL=="ion", GROUP="video", MODE="0660"
+
+# Monado's Monterey driver reads the HMD IMU stream and writes only the
+# documented v50 HMD-IMU enable/disable commands to syncboss0.  Keep the
+# control and power-state nodes root-only; they are not needed by Monado.
+KERNEL=="syncboss_stream0", GROUP="video", MODE="0660"
+KERNEL=="syncboss0", GROUP="video", MODE="0660"
