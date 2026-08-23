@@ -32,14 +32,30 @@ running_pid() {
 }
 
 monado_running() {
-	[ -r "$monado_pidfile" ] || return 1
-	monado_pid=$(cat "$monado_pidfile")
-	case "$monado_pid" in
-		''|*[!0-9]*) return 1 ;;
-	esac
-	[ -r "/proc/$monado_pid/comm" ] || return 1
-	[ "$(cat "/proc/$monado_pid/comm")" = monado-service ] || return 1
-	kill -0 "$monado_pid" 2>/dev/null
+	if [ -r "$monado_pidfile" ]; then
+		monado_pid=$(cat "$monado_pidfile")
+		case "$monado_pid" in
+			''|*[!0-9]*) monado_pid= ;;
+		esac
+		if [ -n "$monado_pid" ] &&
+			[ -r "/proc/$monado_pid/comm" ] &&
+			[ "$(cat "/proc/$monado_pid/comm")" = monado-service ] &&
+			kill -0 "$monado_pid" 2>/dev/null; then
+			return 0
+		fi
+	fi
+
+	# Adopt a service started outside this launcher instead of trying to create
+	# a second Monado instance and failing on its IPC pidfile/socket.
+	for monado_pid in $(pidof monado-service 2>/dev/null || true); do
+		if [ -r "/proc/$monado_pid/comm" ] &&
+			[ "$(cat "/proc/$monado_pid/comm")" = monado-service ] &&
+			kill -0 "$monado_pid" 2>/dev/null; then
+			echo "$monado_pid" >"$monado_pidfile"
+			return 0
+		fi
+	done
+	return 1
 }
 
 case "$1" in
@@ -112,7 +128,16 @@ case "$1" in
 			exit 0
 		fi
 		kill "$pid"
-		echo "KWin VR stop requested (pid $pid)"
+		for delay in 1 1 1 1 1; do
+			if ! kill -0 "$pid" 2>/dev/null; then
+				rm -f "$pidfile"
+				echo "KWin VR stopped (pid $pid)"
+				exit 0
+			fi
+			sleep "$delay"
+		done
+		echo "oculus-vr: KWin did not stop within 5 seconds (pid $pid)" >&2
+		exit 1
 		;;
 	status)
 		if running_pid; then

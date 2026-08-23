@@ -19,10 +19,14 @@ image.
   service while preserving the USB recovery path.
 
 The exact launcher was exercised live on r23 and produced the correctly
-oriented labwc desktop. Both `device-oculus-monterey` 1-r24 and
-`postmarketos-ui-oculus-labwc` 1-r4 build successfully with pmbootstrap. A
-matched boot/system pair still needs to be generated and tested before hashes
-are published here.
+oriented labwc desktop. `device-oculus-monterey` 1-r24,
+`postmarketos-ui-oculus-labwc` 1-r7, and `kwin-oculus-monterey` r4 build
+successfully with pmbootstrap. The r7 launcher was also exercised live with the
+packaged Lavapipe ICD: it started Monado with `XRT_NO_STDIN=1`, adopted an
+already-running Monado instance after its launcher pidfile was removed, waited
+for a confirmed KWin stop during an immediate stop/start cycle, and returned
+to `vrActive=true`. A matched boot/system pair still needs to be generated and
+tested before hashes are published here.
 
 ## VR boundary found during the same trial
 

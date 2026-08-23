@@ -150,6 +150,13 @@ fork now provides a surface-free Vulkan instance plus an opt-in Vulkan Qt Quick
 path for VR. Live testing reached `vrActive=true` with no XR scene failure;
 visual stereo alignment and head-motion behavior still require wearer review.
 
+The packaged launcher starts Monado with `XRT_NO_STDIN=1`, automatically
+activates the KWin VR property over the session bus, and waits for KWin to exit
+during stop/restart. It also adopts an already-running `monado-service` if its
+own pidfile is missing, avoiding a duplicate service failure on the native
+Monado IPC socket. This path was exercised live both from a clean Monado start
+using the packaged Lavapipe ICD and through an immediate KWin stop/start cycle.
+
 `/dev/kgsl-3d0` is present, but `/dev/dri` is absent because the stock 4.4
 kernel has `CONFIG_DRM` disabled. The v50 `vulkan.msm8998.so` driver is an
 Android/Bionic module and cannot be loaded directly by Alpine/Musl. Mesa
