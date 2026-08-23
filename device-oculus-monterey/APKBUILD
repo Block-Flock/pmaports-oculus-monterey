@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=21
+pkgrel=22
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -110,6 +110,8 @@ package() {
 		"$pkgdir/etc/runlevels/default/oculus-rmtfs"
 	ln -s /etc/init.d/oculus-usb-recovery \
 		"$pkgdir/etc/runlevels/default/oculus-usb-recovery"
+	ln -s /etc/init.d/oculus-controller \
+		"$pkgdir/etc/runlevels/default/oculus-controller"
 	mkdir -p "$pkgdir/etc/runlevels/sysinit"
 	ln -s /etc/init.d/oculus-mdev \
 		"$pkgdir/etc/runlevels/sysinit/oculus-mdev"

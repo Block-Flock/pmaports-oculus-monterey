@@ -191,8 +191,9 @@ non-finite values produce no Linux input event.
 
 This bridge is a bring-up path for labwc and pattern login, not controller pose
 tracking. It does not expose pairing, haptics, calibration writes, or firmware
-updates, and its OpenRC service remains disabled until its enumerator output and
-button mapping have been observed on the headset. Test it manually with:
+updates. Revision r22 enables its non-blocking OpenRC service for the first
+desktop test image; USB recovery is independent and remains available if the
+stock controller runtime or mapping fails. Inspect it with:
 
 ```sh
 sudo rc-service oculus-controller start
