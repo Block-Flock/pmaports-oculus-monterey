@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+description="Apply narrow runtime access to Monterey mdev nodes"
+
+depend() {
+	need devfs
+	after oculus-mdev
+	before oculus-stock-firmware oculus-controller
+}
+
+start() {
+	ebegin "Applying Monterey runtime device permissions"
+	for node in kgsl kgsl-3d0 ion syncboss_stream0 syncboss0; do
+		path=/dev/$node
+		if [ ! -c "$path" ]; then
+			ewarn "$path is unavailable"
+			continue
+		fi
+		chown root:video "$path" || return 1
+		chmod 0660 "$path" || return 1
+	done
+	eend 0
+}

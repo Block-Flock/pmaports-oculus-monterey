@@ -17,6 +17,8 @@ usage() {
 
 pidfile="$runtime_dir/oculus-kwin-vr.pid"
 logfile="$runtime_dir/oculus-kwin-vr.log"
+monado_pidfile="$runtime_dir/oculus-monado.pid"
+monado_logfile="$runtime_dir/oculus-monado.log"
 
 running_pid() {
 	[ -r "$pidfile" ] || return 1
@@ -29,6 +31,17 @@ running_pid() {
 	kill -0 "$pid" 2>/dev/null
 }
 
+monado_running() {
+	[ -r "$monado_pidfile" ] || return 1
+	monado_pid=$(cat "$monado_pidfile")
+	case "$monado_pid" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	[ -r "/proc/$monado_pid/comm" ] || return 1
+	[ "$(cat "/proc/$monado_pid/comm")" = monado-service ] || return 1
+	kill -0 "$monado_pid" 2>/dev/null
+}
+
 case "$1" in
 	start)
 		[ -n "${WAYLAND_DISPLAY:-}" ] || {
@@ -39,20 +52,56 @@ case "$1" in
 			echo "oculus-vr: kwin_wayland is not installed" >&2
 			exit 1
 		}
+		command -v monado-service >/dev/null || {
+			echo "oculus-vr: monado-service is not installed" >&2
+			exit 1
+		}
 		if running_pid; then
 			echo "KWin VR is already running (pid $pid, socket $socket)"
 			exit 0
 		fi
+		export QSG_RHI_BACKEND=vulkan
+		export KWIN_VR_QSG_VULKAN=1
+		export XR_RUNTIME_JSON=/usr/share/openxr/1/openxr_monado.json
+		if ! monado_running; then
+			XRT_NO_STDIN=1 \
+			SDL_VIDEODRIVER=x11 \
+			XRT_COMPOSITOR_FORCE_XCB=1 \
+			XRT_COMPOSITOR_COMPUTE=0 \
+			XRT_COMPOSITOR_XCB_FULLSCREEN=1 \
+			monado-service >"$monado_logfile" 2>&1 &
+			monado_pid=$!
+			echo "$monado_pid" >"$monado_pidfile"
+			sleep 2
+			if ! monado_running; then
+				echo "oculus-vr: Monado exited; inspect $monado_logfile" >&2
+				exit 1
+			fi
+		fi
 		kwin_wayland \
 			--wayland-display "$WAYLAND_DISPLAY" \
 			--socket "$socket" \
-			--width 1440 --height 800 --fullscreen --xwayland \
+			--width 1440 --height 800 --fullscreen --xwayland --no-lockscreen \
 			>"$logfile" 2>&1 &
 		pid=$!
 		echo "$pid" >"$pidfile"
 		sleep 1
 		if ! running_pid; then
 			echo "oculus-vr: KWin exited; inspect $logfile" >&2
+			exit 1
+		fi
+		for delay in 1 1 1 1 1 1 1 1 1 1; do
+			if gdbus call --session --dest org.kde.kwinvr --object-path /KwinVr \
+				--method org.freedesktop.DBus.Properties.Set \
+				org.kde.kwinvr vrActive '<true>' >/dev/null 2>&1; then
+				break
+			fi
+			sleep "$delay"
+		done
+		if ! gdbus call --session --dest org.kde.kwinvr --object-path /KwinVr \
+			--method org.freedesktop.DBus.Properties.Get \
+			org.kde.kwinvr vrActive 2>/dev/null | grep -q true; then
+			echo "oculus-vr: KWin started but VR activation failed; inspect $logfile" >&2
 			exit 1
 		fi
 		echo "KWin VR started (pid $pid, socket $socket)"

@@ -1,7 +1,7 @@
 # KDE VR Mode MR 8671, pinned for the Oculus Quest 1 port.
 pkgname=kwin-oculus-monterey
 pkgver=6.6.80_git20260822
-pkgrel=0
+pkgrel=4
 pkgdesc="KWin with the experimental VR Mode plugin for Oculus Monterey"
 url="https://github.com/Block-Flock/kwin-oculus-monterey"
 arch="aarch64"
@@ -91,7 +91,7 @@ subpackages="
 	$pkgname-lang
 	$pkgname-doc
 	"
-_commit=ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf
+_commit=7b743332b63572462d8fa3bc745fed94500e214e
 source="$pkgname-$_commit.tar.gz::https://github.com/Block-Flock/kwin-oculus-monterey/archive/$_commit.tar.gz"
 builddir="$srcdir/$pkgname-$_commit"
 options="!check"
@@ -112,5 +112,5 @@ package() {
 }
 
 sha512sums="
-aaa67f796b7daabde2c86eca4f0fc0119cd01f3ed925c5d248c3972ac816b86e679bda05f967f9f28374f752e86992e7957d986e30cb6a725b9b724b18a6323b  kwin-oculus-monterey-ad20b0ea6f9ec415cb3756f1d53ce419548fe6bf.tar.gz
+5e60af2945aecf973e5ac6f52fddfc29f47adf8e4d279f75eec7411671d9e3900d8a9f97283741ffbf3c9b3077bdf4628db267601414b76f20f6d6008d6077d1  kwin-oculus-monterey-7b743332b63572462d8fa3bc745fed94500e214e.tar.gz
 "

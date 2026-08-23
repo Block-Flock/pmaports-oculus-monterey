@@ -20,4 +20,4 @@ if [ ! -c /dev/fb0 ]; then
 fi
 
 exec xinit /usr/libexec/oculus-labwc-xinit -- \
-	/usr/bin/Xorg :0 -configdir /etc/X11/xorg.conf.d -nolisten tcp
+	/usr/bin/Xorg :0 -nolisten tcp

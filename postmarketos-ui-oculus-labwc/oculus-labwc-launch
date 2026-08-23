@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+uid=10000
+gid=10000
+runtime_dir=/run/user/$uid
+fb_sysfs=/sys/devices/virtual/graphics/fb0
+shim=/run/oculus-fb-probe
+
+[ -c /dev/fb0 ] || {
+	echo "oculus-labwc-launch: /dev/fb0 is unavailable" >&2
+	exit 1
+}
+
+install -d -m 0700 -o "$uid" -g "$gid" "$runtime_dir"
+
+# Xorg 21.1.24 rejects a valid virtual fbdev when it has no
+# /sys/class/graphics/fb0/device/subsystem link. Monterey's downstream MDSS
+# driver is exactly such a device. Expose a platform identity only during the
+# initial probe, then restore the real fb0 sysfs directory as soon as Xorg's
+# socket appears.
+if [ ! -e "$fb_sysfs/device/subsystem" ]; then
+	install -d -m 0755 "$shim/device"
+	ln -snf /sys/bus/platform "$shim/device/subsystem"
+	mount --bind "$shim" "$fb_sysfs"
+	touch "$shim/mounted"
+	(
+		count=0
+		while [ "$count" -lt 100 ] && [ ! -S /tmp/.X11-unix/X0 ]; do
+			sleep 0.1
+			count=$((count + 1))
+		done
+		# Xorg creates its socket before the fbdev driver's screen probe has
+		# completed. Keep the shim briefly beyond socket creation.
+		[ -S /tmp/.X11-unix/X0 ] && sleep 3
+		umount "$fb_sysfs" 2>/dev/null || true
+		rm -f "$shim/mounted"
+	) &
+fi
+
+export HOME=/home/user
+export USER=user
+export LOGNAME=user
+export XDG_RUNTIME_DIR=$runtime_dir
+
+exec setpriv --reuid "$uid" --regid "$gid" --init-groups \
+	dbus-run-session oculus-labwc-session

@@ -1,5 +1,5 @@
 #!/bin/sh
 
 rc-update add dbus default
-rc-update add tinydm default
-tinydm-set-session -s /usr/share/wayland-sessions/oculus-labwc.desktop
+rc-update del tinydm default 2>/dev/null || true
+rc-update add oculus-labwc default

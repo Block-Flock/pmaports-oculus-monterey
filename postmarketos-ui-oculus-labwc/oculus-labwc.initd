@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+
+name="Oculus labwc desktop"
+description="Start labwc through Monterey's no-VT framebuffer path"
+supervisor=supervise-daemon
+command=/usr/sbin/oculus-labwc-launch
+output_log=/var/log/oculus-labwc.log
+error_log=/var/log/oculus-labwc.log
+respawn_delay=2
+respawn_max=5
+respawn_period=1800
+
+depend() {
+	need dbus localmount elogind oculus-device-access
+	after oculus-stock-firmware
+}
+
+stop_post() {
+	if [ -e /run/oculus-fb-probe/mounted ]; then
+		umount /sys/devices/virtual/graphics/fb0 2>/dev/null || true
+		rm -f /run/oculus-fb-probe/mounted
+	fi
+}

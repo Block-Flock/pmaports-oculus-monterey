@@ -120,10 +120,42 @@ isolated Android-graphics compatibility process.
 
 Package `postmarketos-ui-oculus-labwc` implements the initial diagnostic path:
 Xorg scans out through `/dev/fb0`, and labwc runs on wlroots' nested X11 backend
-with Pixman rendering. It proves panel presentation and input but is not
-expected to sustain stereo 72 or 90 Hz. The same labwc session can later run on
-the KGSL/Adreno/HWC compatibility host without changing its menu or KWin VR
-launcher. A future DRM/MSM kernel port would remove both compatibility layers.
+with Pixman rendering. On-device testing reached this path and showed an upright
+desktop through the headset optics. Xorg 21.1 rejects Monterey's otherwise valid
+virtual framebuffer because its sysfs node has no `device/subsystem` link, so
+the OpenRC launcher supplies a temporary platform-device probe identity and
+removes it immediately after Xorg has opened the framebuffer. The Xorg fbdev
+rotation is 180 degrees because the panel scanout is inverted through the
+headset optics.
+
+This proves flat panel presentation, not VR. It is not expected to sustain
+stereo 72 or 90 Hz. The same labwc session can later run on the KGSL/Adreno/HWC
+compatibility host without changing its menu or KWin VR launcher. A future
+DRM/MSM kernel port would remove both compatibility layers.
+
+The first on-device Monado run found the Monterey builder, created an Oculus
+Quest 1 HMD with two views, and assigned it to the head role. The image had the
+Vulkan loader but no Linux Vulkan ICD, so the first compositor attempt failed
+at `vkCreateInstance`. Installing Mesa's Lavapipe ICD provided a correctness
+path: Monado created a 2880x1600 XCB target and KWin's standalone OpenXR test
+created a session and submitted frames to the live headset. This is software
+rendering and misses the 72/90 Hz frame budget; it is diagnostic proof, not the
+final accelerated path.
+
+The KWin VR scene then exposed Qt 6.11 compatibility issues in older grouped
+QML bindings. Those bindings are fixed in the pinned fork. KWin's internal QPA
+also lacked the Vulkan-instance hook required by Qt Quick 3D XR, and its
+QPainter fallback selected Qt's non-RHI software scene graph globally. The
+fork now provides a surface-free Vulkan instance plus an opt-in Vulkan Qt Quick
+path for VR. Live testing reached `vrActive=true` with no XR scene failure;
+visual stereo alignment and head-motion behavior still require wearer review.
+
+`/dev/kgsl-3d0` is present, but `/dev/dri` is absent because the stock 4.4
+kernel has `CONFIG_DRM` disabled. The v50 `vulkan.msm8998.so` driver is an
+Android/Bionic module and cannot be loaded directly by Alpine/Musl. Mesa
+Turnip does not support the Quest 1's Adreno 540, so accelerated presentation
+still requires either an Android-driver compatibility host or a newer DRM/MSM
+kernel path.
 
 ## Refresh-rate ownership
 
@@ -227,13 +259,14 @@ pairing data may be committed or included in an APK.
 - [x] Publish the KWin VR fork at the exact KDE merge-request revision.
 - [x] Package a labwc base desktop and guarded nested-KWin launcher.
 - [x] Build the patched KWin VR plugin and `kwin_wayland` for aarch64.
-- [ ] Show the framebuffer/labwc diagnostic on the panel.
-- [ ] Start the patched KWin VR plugin on the headset against Monado.
-- [ ] Capture and document real SyncBoss IMU records with the read-only probe.
+- [x] Show the framebuffer/labwc diagnostic on the panel with correct optical
+      orientation.
+- [x] Start the patched KWin VR plugin on the headset against Monado; the live
+  service reached `vrActive=true` through the Lavapipe correctness path.
+- [x] Capture and parse the live SyncBoss HMD IMU stream in Monado.
 - [x] Implement and host-test a guarded, orientation-only Monterey Monado
       backend.
-- [ ] Confirm the Monterey backend's IMU stream and orientation axes on the
-      headset.
+- [ ] Confirm the Monterey backend's orientation axes visually on the headset.
 - [ ] Render a stereo test scene on the headset (never substitute simulated
       pose for this gate).
 - [ ] Present through the v50 Qualcomm graphics compatibility layer.

@@ -2,7 +2,7 @@
 maintainer=""
 pkgname=device-oculus-monterey
 pkgver=1
-pkgrel=23
+pkgrel=24
 pkgdesc="Oculus Quest 1"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -28,6 +28,7 @@ source="
 	oculus-initramfs-debug-login
 	oculus-map-pmos-subpartitions
 	oculus-mdev.initd
+	oculus-device-access.initd
 	oculus-initramfs-recovery-cleanup
 	oculus-initramfs-recovery-hook
 	oculus-initramfs-recovery.files
@@ -90,6 +91,8 @@ package() {
 		"$pkgdir/etc/init.d/oculus-usb-recovery"
 	install -Dm755 "$srcdir/oculus-mdev.initd" \
 		"$pkgdir/etc/init.d/oculus-mdev"
+	install -Dm755 "$srcdir/oculus-device-access.initd" \
+		"$pkgdir/etc/init.d/oculus-device-access"
 	install -Dm644 "$srcdir/oculus-usb-recovery.nmconf" \
 		"$pkgdir/etc/NetworkManager/conf.d/20-oculus-usb-recovery.conf"
 	install -Dm644 "$srcdir/90-oculus-monterey-access.rules" \
@@ -118,6 +121,8 @@ package() {
 	mkdir -p "$pkgdir/etc/runlevels/sysinit"
 	ln -s /etc/init.d/oculus-mdev \
 		"$pkgdir/etc/runlevels/sysinit/oculus-mdev"
+	ln -s /etc/init.d/oculus-device-access \
+		"$pkgdir/etc/runlevels/sysinit/oculus-device-access"
 }
 
 sha512sums="
@@ -126,6 +131,7 @@ sha512sums="
 6092521456b4522a7dce6219006c4d8d62ee9dfbaf64ca288bf5b3516dc8c4f518cdc3b486e7c6b912ae21cee41d9de5bf9193e94d75d6ebf237ff30c8fa6b12  oculus-initramfs-debug-login
 67398fbe308ddc08a941011918cd6843aa6736b1bdc69d83a39dc9bf8567a5cc3c40e46c4348687c2082d59cafe54f1ec1ca915a267b4db2a1179afc26db9a48  oculus-map-pmos-subpartitions
 1ba201c6130f5ecba51628f93ca0d1bf4cfdd8784845c938e2fc10b633331969e5683056871d703692586f759ba1dbc7d515b2aa73711e200e8a558c141c1a84  oculus-mdev.initd
+78c28a7619b2721fe75159b75f4a7c46d112343baec31534520ec322856d49f23dce60be772649e88352fbf2c44bf1fd61d2f2035b10d0e6421201e5994b8356  oculus-device-access.initd
 771ba9e1003986666e8d094c0c4b706d2c1ba90aa86716f23dfc90a55b09e916786102708943d251141e6052a82dae33a940a0a9f177fec06a4261732fd49f42  oculus-initramfs-recovery-cleanup
 6532d25a89ba46784ff87dbfd8bf14647c4ac04d86c1582229eb3a430d92d1fc2e409c0810e6d5587d9a3a0968a69d19a3690b745928ff3023c80e350857cbb1  oculus-initramfs-recovery-hook
 910d2a859c5aeb93294c6b65c524c242c9a34378900e390444d3b71aa0bf366c48a1a7f67229faee683bea5ce19d12cd34b4ba0f30caff4470ddf26f484f6a71  oculus-initramfs-recovery.files
