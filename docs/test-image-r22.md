@@ -11,14 +11,10 @@ Build from pmaports commit
 `35d43c5df525f074ec0c187397cc34cc5df0550f` with UI
 `oculus-labwc` and SSH public-key installation enabled. Run `pmbootstrap
 install --no-sparse`, export the matched artifacts, then wrap the exported boot
-image with the owner's exact v50 boot image:
-
-```sh
-scripts/prepare-monterey-stock-kernel-boot \
-  export/boot.img /path/to/v50/boot.img \
-  export/boot-monterey-desktop-r22-stock-90hz.img \
-  --refresh-rate 90
-```
+image with the owner's exact v50 boot image. (The wrapping tool lived at
+`scripts/prepare-monterey-stock-kernel-boot` when this image was built; it has
+since been removed from the repository because repackaging stock kernels is not
+a supported pmOS path. It is kept in the owner's local workspace only.)
 
 The locally generated reference pair has these hashes:
 
