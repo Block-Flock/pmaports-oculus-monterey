@@ -3,7 +3,7 @@
 description="Expose the stock Android userspace through a temporary read-only executable bind"
 
 depend() {
-	need oculus-stock-firmware
+	after oculus-mdev
 	before oculus-controller
 }
 

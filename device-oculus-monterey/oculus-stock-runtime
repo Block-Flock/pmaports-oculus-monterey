@@ -1,8 +1,11 @@
 #!/bin/sh
 
 # Create a narrow executable view of the untouched Android system tree for the
-# owner-supplied SyncBoss userspace.  The authoritative slot-A mount remains
-# read-only, nodev, nosuid, and noexec.
+# owner-supplied SyncBoss userspace.  This script mounts the Android system
+# partition itself, read-only, nodev, nosuid, noexec.  pmOS runs from inside
+# the system partition of the slot it was booted from, so the Android tree is
+# always the one in the other slot; the suffix is read from the kernel command
+# line instead of being assumed.
 
 set -eu
 
@@ -10,6 +13,8 @@ system_mount=${OCULUS_SYSTEM_MOUNT:-/vendor/oculus-system}
 runtime_root=${OCULUS_STOCK_RUNTIME_ROOT:-/run/oculus-stock-runtime}
 runtime_mount=$runtime_root/system
 mounts_file=${OCULUS_MOUNTS_FILE:-/proc/mounts}
+cmdline_file=${OCULUS_CMDLINE_FILE:-/proc/cmdline}
+sys_class_block=${OCULUS_SYS_CLASS_BLOCK:-/sys/class/block}
 mount_command=${OCULUS_MOUNT_COMMAND:-mount}
 umount_command=${OCULUS_UMOUNT_COMMAND:-umount}
 
@@ -19,6 +24,10 @@ log() {
 
 mounted_options() {
 	awk -v target="$1" '$2 == target { print $4; exit }' "$mounts_file"
+}
+
+mounted_source() {
+	awk -v target="$1" '$2 == target { print $1; exit }' "$mounts_file"
 }
 
 has_option() {
@@ -32,10 +41,63 @@ same_tree() {
 	[ "$(stat -c '%d:%i' "$1")" = "$(stat -c '%d:%i' "$2")" ]
 }
 
+# pmOS boots from one slot, so stock Android lives in the other.  Read the
+# running slot from the command line rather than hardcoding either suffix.
+	target_slot() {
+	if [ -n "${OCULUS_TARGET_SLOT:-}" ]; then
+		case "$OCULUS_TARGET_SLOT" in
+		_a|_b) printf '%s\n' "$OCULUS_TARGET_SLOT"; return ;;
+		*) log "invalid OCULUS_TARGET_SLOT '$OCULUS_TARGET_SLOT'"; return 1 ;;
+		esac
+	fi
+
+	running=
+	for argument in $(cat "$cmdline_file"); do
+		case "$argument" in
+		androidboot.slot_suffix=_a|androidboot.slot_suffix=_b)
+			running=${argument#*=}
+			;;
+		esac
+	done
+	case "$running" in
+	_a) printf '%s\n' _b ;;
+	_b) printf '%s\n' _a ;;
+	*)
+		log "kernel command line has no androidboot.slot_suffix"
+		return 1
+		;;
+	esac
+}
+
+find_system_partition() {
+	suffix=$1
+	found=
+
+	for uevent in "$sys_class_block"/*/uevent; do
+		[ -r "$uevent" ] || continue
+		grep -qx "PARTNAME=system$suffix" "$uevent" || continue
+		devname=$(sed -n 's/^DEVNAME=//p' "$uevent")
+		[ -n "$devname" ] || continue
+		if [ -n "$found" ]; then
+			log "more than one partition is named system$suffix"
+			return 1
+		fi
+		found=/dev/$devname
+	done
+
+	if [ -z "$found" ] || [ ! -b "$found" ]; then
+		log "could not resolve block partition system$suffix"
+		return 1
+	fi
+	printf '%s\n' "$found"
+}
+
 verify_source() {
 	options=$(mounted_options "$system_mount")
-	if [ -z "$options" ] || ! has_option "$options" ro || ! has_option "$options" noexec; then
-		log "$system_mount must be mounted read-only and noexec"
+	if [ -z "$options" ] || ! has_option "$options" ro || \
+	   ! has_option "$options" nosuid || ! has_option "$options" nodev || \
+	   ! has_option "$options" noexec; then
+		log "$system_mount must be mounted ro, nosuid, nodev, noexec"
 		return 1
 	fi
 	[ -d "$system_mount/system" ] || {
@@ -58,11 +120,40 @@ verify_runtime() {
 	}
 }
 
-start_runtime() {
+mount_source_partition() {
+	device=$1
+	existing=$(mounted_source "$system_mount")
+
+	if [ -n "$existing" ]; then
+		if [ "$existing" != "$device" ]; then
+			log "$system_mount is already mounted from unexpected source $existing"
+			return 1
+		fi
+		verify_source
+		return
+	fi
+
+	mkdir -p "$system_mount"
+	"$mount_command" -t ext4 -o ro,noload,nosuid,nodev,noexec \
+		"$device" "$system_mount"
 	verify_source
+}
+
+start_runtime() {
+	# Testing/discovery override: skips slot detection and uevent scanning.
+	if [ -n "${OCULUS_SYSTEM_DEVICE:-}" ]; then
+		device=${OCULUS_SYSTEM_DEVICE}
+	else
+		suffix=$(target_slot)
+		device=$(find_system_partition "$suffix")
+	fi
+
+	mount_source_partition "$device"
+
 	mkdir -p "$runtime_mount"
 	if [ -n "$(mounted_options "$runtime_mount")" ]; then
 		verify_runtime
+		log "stock Android runtime is available through a temporary read-only bind"
 		return
 	fi
 	"$mount_command" --bind "$system_mount/system" "$runtime_mount"
@@ -75,21 +166,37 @@ start_runtime() {
 }
 
 stop_runtime() {
-	[ -n "$(mounted_options "$runtime_mount")" ] || return 0
-	if ! same_tree "$system_mount/system" "$runtime_mount"; then
-		log "refusing to unmount an unexpected filesystem at $runtime_mount"
-		return 1
+	result=0
+
+	if [ -n "$(mounted_options "$runtime_mount")" ]; then
+		if same_tree "$system_mount/system" "$runtime_mount"; then
+			"$umount_command" "$runtime_mount"
+		else
+			log "refusing to unmount an unexpected filesystem at $runtime_mount"
+			result=1
+		fi
 	fi
-	"$umount_command" "$runtime_mount"
+
+	if [ -n "$(mounted_options "$system_mount")" ]; then
+		submounts=$(awk -v root="$system_mount" \
+			'index($2, root "/") == 1 { print $2 }' "$mounts_file")
+		if [ -n "$submounts" ]; then
+			log "leaving $system_mount mounted; submounts still present"
+		else
+			"$umount_command" "$system_mount"
+		fi
+	fi
+
+	return "$result"
 }
 
 case ${1:-start} in
 start) start_runtime ;;
 stop) stop_runtime ;;
 status)
-	verify_source
-	verify_runtime
-	printf 'runtime=%s\n' "$runtime_mount"
+	printf 'slot=%s\n' "$(target_slot)"
+	printf 'system=%s\n' "$(mounted_source "$system_mount")"
+	verify_runtime && printf 'runtime=%s\n' "$runtime_mount"
 	;;
 *)
 	echo "usage: ${0##*/} {start|stop|status}" >&2
