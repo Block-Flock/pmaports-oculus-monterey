@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Return the headset to the Oculus bootloader: flush disks, then let
+# reboot-mode issue RESTART2("bootloader"), which Monterey's Qualcomm
+# restart driver maps to the bootloader restart reason.
+
+sync
+exec /usr/sbin/reboot-mode bootloader

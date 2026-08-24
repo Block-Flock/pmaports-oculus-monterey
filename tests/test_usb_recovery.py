@@ -13,23 +13,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "device-oculus-monterey" / "oculus-usb-recovery"
 INITRAMFS_HOOK = (
-    ROOT / "device-oculus-monterey" / "oculus-initramfs-recovery-hook"
+    ROOT
+    / "oculus-monterey-initramfs-support"
+    / "oculus-initramfs-recovery-hook"
 )
 DEBUG_LOGIN = (
-    ROOT / "device-oculus-monterey" / "oculus-initramfs-debug-login"
+    ROOT
+    / "oculus-monterey-initramfs-support"
+    / "oculus-initramfs-debug-login"
 )
 SUBPARTITION_MAPPER = (
-    ROOT / "device-oculus-monterey" / "oculus-map-pmos-subpartitions"
+    ROOT
+    / "oculus-monterey-initramfs-support"
+    / "oculus-map-pmos-subpartitions"
+)
+REBOOT_BOOTLOADER = (
+    ROOT / "oculus-monterey-initramfs-support" / "oculus-reboot-bootloader"
+)
+INITRAMFS_FILES = (
+    ROOT
+    / "oculus-monterey-initramfs-support"
+    / "oculus-initramfs-recovery.files"
 )
 FLASH_SLOT_B = ROOT / "scripts" / "flash-verified-slot-b"
 MDEV_SERVICE = ROOT / "device-oculus-monterey" / "oculus-mdev.initd"
 RECOVERY_SUDOERS = ROOT / "device-oculus-monterey" / "oculus-recovery.sudoers"
-STOCK_FIRMWARE = ROOT / "device-oculus-monterey" / "oculus-stock-firmware"
-STOCK_FIRMWARE_SERVICE = (
-    ROOT / "device-oculus-monterey" / "oculus-stock-firmware.initd"
-)
 RMTFS_HELPER = ROOT / "device-oculus-monterey" / "oculus-rmtfs"
 RMTFS_SERVICE = ROOT / "device-oculus-monterey" / "oculus-rmtfs.initd"
+DEVICE_APKBUILD = ROOT / "device-oculus-monterey" / "APKBUILD"
+FIRMWARE_APKBUILD = ROOT / "firmware-oculus-monterey" / "APKBUILD"
+SUPPORT_APKBUILD = ROOT / "oculus-monterey-initramfs-support" / "APKBUILD"
 
 
 class UsbRecoveryTest(unittest.TestCase):
@@ -153,35 +166,56 @@ class UsbRecoveryTest(unittest.TestCase):
         self.assertIn('/sbin/mdev -s', service)
         self.assertIn('before udev udev-trigger', service)
 
+    def test_reboot_bootloader_is_a_shell_wrapper_around_reboot_mode(self) -> None:
+        helper = REBOOT_BOOTLOADER.read_text()
+        self.assertIn("sync", helper)
+        self.assertIn("exec /usr/sbin/reboot-mode bootloader", helper)
+        # The old static C binary must be gone from the repository.
+        self.assertFalse(
+            (ROOT / "device-oculus-monterey" / "oculus-reboot-bootloader.c").exists()
+        )
+
+    def test_initramfs_files_include_reboot_mode_binary(self) -> None:
+        files = INITRAMFS_FILES.read_text()
+        self.assertIn("/usr/sbin/oculus-reboot-bootloader", files)
+        self.assertIn("/usr/sbin/reboot-mode", files)
+        self.assertIn("/usr/sbin/dmsetup", files)
+        self.assertIn("/hooks/20-oculus-recovery.sh", files)
+
+    def test_support_package_ships_initramfs_pieces(self) -> None:
+        apkbuild = SUPPORT_APKBUILD.read_text()
+        self.assertIn("depends=\"reboot-mode\"", apkbuild.replace("\n", " ").replace("\t", " "))
+        self.assertIn("usr/share/mkinitfs/hooks/20-oculus-recovery.sh", apkbuild)
+        self.assertIn("usr/share/mkinitfs/files/20-oculus-recovery.files", apkbuild)
+
+    def test_device_package_depends_on_new_packages(self) -> None:
+        apkbuild = DEVICE_APKBUILD.read_text()
+        self.assertIn("firmware-oculus-monterey", apkbuild)
+        self.assertIn("oculus-monterey-initramfs-support", apkbuild)
+        self.assertNotIn("oculus-stock-firmware", apkbuild)
+        self.assertNotIn("oculus-initramfs-recovery-hook", apkbuild)
+
+    def test_firmware_package_installs_packaged_blobs_not_slot_extraction(
+        self,
+    ) -> None:
+        apkbuild = FIRMWARE_APKBUILD.read_text()
+        self.assertIn("license=\"proprietary\"", apkbuild)
+        self.assertIn("lib/firmware", apkbuild)
+        self.assertIn("releases/download/v50-firmware/", apkbuild)
+
     def test_wheel_refresh_control_is_argument_bounded(self) -> None:
         policy = RECOVERY_SUDOERS.read_text()
         self.assertIn('/usr/sbin/oculus-refresh-rate 72', policy)
         self.assertIn('/usr/sbin/oculus-refresh-rate 90', policy)
         self.assertNotIn('/usr/sbin/oculus-refresh-rate *', policy)
 
-    def test_stock_firmware_mounts_only_slot_a_read_only(self) -> None:
-        helper = STOCK_FIRMWARE.read_text()
-        self.assertIn("find_partition modem_a", helper)
-        self.assertIn("find_partition system_a", helper)
-        self.assertNotIn("find_partition modem_b", helper)
-        self.assertNotIn("find_partition system_b", helper)
-        self.assertIn("ro,nosuid,nodev,noexec", helper)
-        self.assertIn("ro,noload,nosuid,nodev,noexec", helper)
-        self.assertNotIn("mount -o rw", helper)
-        self.assertIn("fallback_root=${OCULUS_FIRMWARE_FALLBACK_ROOT:-/lib/firmware}", helper)
-        self.assertIn('link_firmware_directory "$modem_mount/image" "$fallback_root"', helper)
-
-    def test_stock_firmware_precedes_network_services(self) -> None:
-        service = STOCK_FIRMWARE_SERVICE.read_text()
-        self.assertIn("after oculus-mdev", service)
-        self.assertIn("before networkmanager wpa_supplicant", service)
-
     def test_rmtfs_is_read_only_and_never_votes_a_subsystem(self) -> None:
         helper = RMTFS_HELPER.read_text()
         service = RMTFS_SERVICE.read_text()
         self.assertIn('command_args="-P -r"', service)
         self.assertIn("libqipcrtr4msmipc.so", service)
-        self.assertIn("need oculus-stock-firmware", service)
+        self.assertNotIn("need oculus-stock-firmware", service)
+        self.assertIn("after oculus-mdev", service)
         self.assertNotIn(" -s", service)
         self.assertNotIn("subsys_", helper + service)
 

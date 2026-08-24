@@ -1,4 +1,5 @@
 /usr/sbin/oculus-reboot-bootloader
+/usr/sbin/reboot-mode
 /usr/sbin/dmsetup
 /usr/share/oculus-monterey/oculus-initramfs-debug-login:/sbin/oculus-debug-login
 /usr/share/oculus-monterey/oculus-map-pmos-subpartitions:/sbin/oculus-map-pmos-subpartitions

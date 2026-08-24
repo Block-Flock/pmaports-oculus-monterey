@@ -1,4 +1,4 @@
-From: postmarketOS Oculus Monterey maintainers <maintainers@postmarketos.org>
+From: Jose Molina <josemo360@yahoo.com>
 Subject: [PATCH] staging: oculus: ignore unavailable internal Kconfig
 
 The public kernel snapshot contains the downstream Oculus drivers but not the

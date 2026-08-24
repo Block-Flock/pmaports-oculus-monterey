@@ -8,7 +8,6 @@ command_args="-P -r"
 export LD_PRELOAD=/usr/lib/preload/libqipcrtr4msmipc.so
 
 depend() {
-	need oculus-stock-firmware
 	after oculus-mdev
 	before networkmanager wpa_supplicant
 }

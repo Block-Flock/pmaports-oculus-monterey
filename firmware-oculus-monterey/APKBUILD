@@ -1,0 +1,23 @@
+# Reference: <https://docs.postmarketos.org/pmaports/main/packaging/firmware-packages.html>
+maintainer="Jose Molina <josemo360@yahoo.com>"
+pkgname=firmware-oculus-monterey
+pkgver=1
+pkgrel=0
+pkgdesc="Firmware for Oculus Quest 1 (WCN3990 WLAN/BT, Adreno 540, ADSP, CM710X)"
+url="https://postmarketos.org"
+arch="noarch"
+license="proprietary"
+options="!check !archcheck !strip"
+
+# Firmware extracted at build time from the owner's q1_22310100490800000 OTA.
+# The tarball is not committed to git; see docs/bringup.md for how it was made.
+source="https://github.com/Block-Flock/pmaports-oculus-monterey/releases/download/v50-firmware/firmware-oculus-monterey-v50.tar.gz"
+
+package() {
+	mkdir -p "$pkgdir/lib/firmware"
+	cp -a "$srcdir"/lib/firmware/. "$pkgdir/lib/firmware/"
+}
+
+sha512sums="
+c2f7ca813afbd1477ca63958089932b8dea9f248e21a7674cabc1a36c88b98ec78f9bcd9920f406228ab6ce2bba0fdaf1ff690a5093e947206298156f1a866ca  firmware-oculus-monterey-v50.tar.gz
+"

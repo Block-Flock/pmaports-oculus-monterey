@@ -13,7 +13,6 @@ respawn_period=1800
 
 depend() {
 	need dbus localmount elogind oculus-controller oculus-device-access
-	after oculus-stock-firmware
 }
 
 stop_post() {
