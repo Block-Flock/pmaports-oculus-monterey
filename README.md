@@ -1,318 +1,126 @@
-# postmarketOS: Oculus Quest 1 (Monterey)
+# postmarketOS on Oculus Quest 1 (monterey)
 
-This is an early downstream-kernel port for the original Oculus Quest. It is
-not yet a complete Android replacement image and it does not alter the boot
-chain.
+Downstream port for the original Quest, based on the stock 4.4 kernel. Boots
+from slot B, keeps Android intact on slot A, and never touches abl/xbl.
 
-The current verified milestone is an installed postmarketOS edge system with
-its embedded root filesystem mounted read-write, OpenRC running, and
-authenticated SSH reachable over stable USB NCM. The initramfs UFS mappings
-and matching UUID handoff were proven on-device. The framebuffer reports its
-2880x1600 90 Hz mode, but visible compositor output, measured 72/90
-presentation, Wi-Fi, Bluetooth, audio, tracking, passthrough, and a VR desktop
-remain separate validation milestones until they pass on-device tests. The
-normal-system mdev service has been cold-booted successfully and populates the
-framebuffer, KGSL, SyncBoss, input, media, and V4L2 nodes.
+What works right now: cold boot into an installed postmarketOS system, SSH over
+USB NCM (172.16.42.1), labwc desktop visible through the panel, and a nested
+KWin VR session rendering through Monado/OpenXR (software rendering for now).
+Touch controllers enumerate through libinput via a bridge to the stock SyncBoss
+userspace. Not working yet: GPU acceleration, tracking, passthrough, Wi-Fi,
+audio, measured 72/90 Hz presentation.
 
-## Current status in plain language
+Packages in this repo:
 
-This port boots from slot B and gives a recoverable Alpine system over USB.
-It does **not** have a visible desktop or working VR yet.
+| Package | Purpose |
+| --- | --- |
+| `device-oculus-monterey` | device package: services, udev rules, sudo policy |
+| `linux-oculus-monterey` | kernel built from the public Oculus source (gcc4) |
+| `firmware-oculus-monterey` | WLAN/BT/GPU/ADSP firmware extracted from the v50 OTA |
+| `oculus-monterey-initramfs-support` | initramfs recovery hook, subpartition mapper, bootloader-return helper |
+| `postmarketos-ui-oculus-labwc` | labwc session + nested KWin VR launchers + pattern lock |
+| `kwin-oculus-monterey` | KWin with KDE MR !8671 VR mode, pinned fork |
+| `monado-oculus-monterey` | Monado with a Monterey SyncBoss IMU driver |
 
-| Area | Status | What that means |
-| --- | --- | --- |
-| Boot and root filesystem | Verified | Cold boot reaches OpenRC on slot B. |
-| USB recovery | Verified | SSH works over USB NCM and the headset can reboot to its bootloader without ADB. |
-| Display panel | Partly verified | The 2880x1600 framebuffer and 90 Hz panel mode exist; visible pixels and measured presentation rate are still unverified. |
-| GPU | Hardware found | The downstream kernel exposes KGSL, not DRM. The matching v50 Adreno/HWC userspace must be loaded locally from the owner's firmware. |
-| Desktop and OpenXR | In progress | labwc is the small base desktop; patched KWin runs nested only for VR, with Monado underneath it. |
-| Quest Touch controllers | In progress | They use the SyncBoss/Pulsar radio, not ordinary Bluetooth. Firmware updating will remain disabled. |
-| Tracking and passthrough | Not working | Kernel devices exist, but native Monado interfaces are not implemented yet. |
-| Wi-Fi and audio | Not working | These remain separate bring-up tasks. |
+## Boot details worth knowing
 
-For the desktop, GPU, OpenXR, and controller plan, read
-[`docs/vr-desktop.md`](docs/vr-desktop.md). The rest of this README records the
-boot-image and hardware details needed to reproduce or debug the verified base.
+Monterey's bootloader appends `skip_initramfs root=/dev/dm-0 init=/init`, so the
+kernel carries a small patch (`honor-pmos-initramfs.patch`) plus the
+`pmos_force_initramfs` argument to use the pmOS ramdisk instead. The unlocked
+bootloader also wants Oculus's legacy 4096-byte BootSignature page after the
+boot payload; pmbootstrap doesn't produce one, so image finalizing uses a
+known-good boot image as a structural template
+(`scripts/prepare-monterey-boot`, no crypto, unlocked devices only).
 
-## Display rate
+pmOS lives inside `system_b`: the system image contains a small GPT with
+`pmOS_boot` and `pmOS_root`. The stock kernel reports UFS at 4096-byte logical
+sectors while that GPT uses 512-byte LBAs, and its loop driver gets partition
+I/O wrong when you override the sector size. The initramfs hook therefore reads
+the GPT through a throwaway read-only loop view, detaches it, and creates
+4096-aligned dm-linear mappings instead. This kernel has no devtmpfs either, so
+an mdev daemon creates device nodes for both initramfs and normal boot.
 
-The `q1_22310100490800000` OTA defaults the Lightman panel to 72 Hz and caps
-dynamic FPS at 72 in all 14 appended DTBs. Newer production firmware examined
-on the test headset exposes a 90 Hz Lightman mode
-(`debug.oculus.refreshRate=90`, SurfaceFlinger allowed configuration `90 Hz`).
-`90hz-default-v2.patch` makes 90 Hz the source-built kernel default while
-retaining the downstream driver's dynamic-FPS support. The stock-kernel image
-builder described below applies the same two 72-to-90 DTB cell changes locally.
+Boot and system images must come from the same `pmbootstrap install`; the UUIDs
+have to match.
 
-After booting postmarketOS, use the root-only selector:
+## Firmware
 
-```sh
-oculus-refresh-rate status
-oculus-refresh-rate 72
-oculus-refresh-rate 90
-oculus-refresh-rate uncapped
-```
+`firmware-oculus-monterey` ships the needed blobs as real files under
+`/lib/firmware/` — WCN3990 WLAN and BT firmware, Adreno 540 (a530/a540) files,
+ADSP, and the CM710X codec blob. They were extracted from the owner's
+`q1_22310100490800000` OTA; the tarball is attached to a GitHub release here and
+is not in git. Nothing mounts Android partitions just to expose firmware
+anymore.
 
-It writes only `/sys/class/graphics/fb0/dynamic_fps`. Some downstream builds do
-not expose readback, so the helper reports that limitation instead of treating
-an empty read as proof of failure. `measured-fps` is a diagnostic value and can
-be zero when no active framebuffer client is presenting.
-
-`uncapped` selects the panel driver's supported maximum, currently 90 Hz; it
-cannot exceed the physical panel capability. Panel refresh and VR compositor
-frame rate are different controls. A 90 Hz panel mode does not make the Oculus
-Android VR runtime render at 90 FPS. The
-Android runtime currently observed on the test headset reports failures such as
-`WaitForNextBaseVsync is stuck` and `WarpSwap: MakeRequest failed`; those must
-be solved in an OpenXR/runtime implementation, not by changing the panel DTB.
-
-## Firmware and boot structure
-
-The examined full OTA is an Android update payload containing separate `boot`,
-`system`, `modem`, `rpm`, `tz`, `hyp`, `pmic`, `keymaster`, `cmnlib`,
-`cmnlib64`, `devcfg`, `ovrtz`, `abl`, and `xbl` partitions. This port needs only
-the user-supplied `boot` image as a hardware-compatible kernel template. The
-guarded workflow does not extract or write `abl` or `xbl`.
-
-Monterey uses an Android boot-image v0 header with 4096-byte pages, kernel load
-address `0x00008000`, ramdisk address `0x01000000`, second-stage address
-`0x00f00000`, and tags address `0x00000100`. A 4096-byte legacy DER
-BootSignature page follows the aligned payload. The bootloader adds
-`skip_initramfs root=/dev/dm-0 init=/init`, so an unmodified stock kernel skips
-the pmOS ramdisk even when that ramdisk is present.
-
-Android slot selection normally maps `system_b` directly as the root
-filesystem. A pmOS system image instead places a small GPT inside `system_b`:
-partition 1 is `pmOS_boot` and partition 2 is `pmOS_root`. This stock kernel
-reports UFS with 4096-byte logical sectors and has no devtmpfs filesystem,
-while the embedded GPT uses 512-byte LBAs. Its old loop driver misaddresses
-filesystem I/O when asked to override that sector size. The device initramfs
-hook therefore runs an explicit `mdev` scan, uses a read-only 512-byte loop view
-only to decode the GPT metadata, detaches it, then creates validated,
-4096-aligned `dm-linear` mappings for the two extents before generic pmOS root
-discovery. It checks the physical bounds and the
-`pmOS_boot`/`pmOS_root` labels before continuing.
-The boot image and system image must come from the same `pmbootstrap install`;
-mixing artifacts from different installs leaves UUIDs that cannot match.
-
-The stock tracking and passthrough stack is not a single kernel toggle. It uses
-the built-in SyncBoss and camera drivers together with Android-specific sensor
-HALs, `trackingservice`, `cameramuxmodeservice`, `vrapiserver`, Binder/HIDL,
-SurfaceFlinger, calibration data, and device-specific permissions. Bring-up on
-Alpine must first prove the kernel devices (`syncboss`, V4L2/media, framebuffer,
-and KGSL), then provide native userspace interfaces or an explicitly isolated
-compatibility layer. The proprietary Android services are not copied into the
-rootfs by this repository.
-
-The device package mounts the preserved `modem_a` and `system_a` partitions
-read-only at boot and exposes their firmware through
-`/lib/firmware/postmarketos`. It does not copy those files into the package.
-This requires slot A to remain a complete, known-good Android installation;
-the service deliberately never selects `modem_b` or `system_b`, because B is
-the postmarketOS trial slot. Inspect it with:
-
-```sh
-rc-service oculus-stock-firmware status
-oculus-stock-firmware status
-rc-service oculus-rmtfs status
-oculus-rmtfs status
-find /lib/firmware/postmarketos -maxdepth 2 -type l -ls
-```
-
-Live testing proved that these mounts let the built-in QCACLD loader create
-`/dev/wlan`. A working `wlan0` still depends on the older Qualcomm IPC Router
-and remote WCNSS/modem firmware-service handshake. The V50 kernel implements
-`AF_MSM_IPC`, not modern upstream `AF_QRTR`, so Alpine's current QRTR services
-need the `libqipcrtr4msmipc` compatibility preload. The device service uses it
-to register upstream rmtfs in no-write mode over the old router and never
-passes rmtfs's remote-processor `-s` option. It also creates the old UIO alias
-current rmtfs expects. The service does not vote the modem subsystem or claim
-Wi-Fi support.
-
-A bounded manual modem vote reached MBA but exposed a separate firmware-loader
-fallback mismatch, then wedged the vendor PIL shutdown path and triggered the
-watchdog. BusyBox mdev searches only `/lib/firmware`, so the mount service now
-creates collision-safe runtime links there as well as under the configured
-`postmarketos` directory. Remote-processor voting remains disabled until this
-path is proven without a watchdog reset.
+Wi-Fi is still not functional: QCACLD loads and `/dev/wlan` appears, but this
+kernel speaks Qualcomm's old `AF_MSM_IPC` router rather than QRTR. `rmtfs`
+runs through the `libqipcrtr4msmipc` preload in a no-write mode. Do not enable
+modem subsystem voting — a manual vote wedged PIL's failure path once and took
+a watchdog reset to recover from.
 
 ## Build
-
-Use a current `pmbootstrap` checkout with this repository's package directories
-in the pmaports `device/downstream` category. Build the kernel and device
-package, then create the normal postmarketOS artifacts:
 
 ```sh
 pmbootstrap build linux-oculus-monterey
 pmbootstrap build device-oculus-monterey
 pmbootstrap install
-pmbootstrap export ./export
 ```
 
-This downstream 4.4 tree must be compiled with pmaports' `gcc4` toolchain. The
-known-working OTA kernel was built with Android GCC 4.9; an Alpine GCC 15 build
-returned directly to fastboot, while the GCC 4.9 package build reaches the
-expected container layout. The package selects GCC4 automatically.
+The 4.4 tree needs pmaports' gcc4 toolchain (selected automatically); Alpine's
+modern GCC produces a kernel that goes straight back to fastboot.
 
-Monterey's bootloader adds Android's `skip_initramfs` argument. The
-`honor-pmos-initramfs.patch` kernel change and `pmos_force_initramfs` device
-argument are both required; without them the external postmarketOS initramfs is
-discarded and the kernel tries Android's dm-verity root instead.
+Honest caveat: hardware-tested boot images so far wrap the OTA kernel using a
+local tool that isn't part of this repo, because repackaging stock kernels is
+not something pmOS supports — you're expected to roll your own kernel, which is
+what `linux-oculus-monterey` is for. That source-built kernel boots to the same
+container layout in testing but hasn't been proven end-to-end on the panel yet.
+Closing that gap is the current bring-up priority.
 
-The unlocked bootloader also expects a parseable 4096-byte legacy Oculus
-BootSignature container. pmbootstrap does not emit it, and its mkbootimg
-version records a zero second-stage address when there is no second payload.
-There are two image paths.
+## Flashing and recovery
 
-For the fully open source kernel, finalize the exported image using a
-personally backed-up, known-working Monterey boot image as the structural
-template:
-
-```sh
-scripts/prepare-monterey-boot \
-  export/boot.img /path/to/known-good-monterey-boot.img \
-  export/boot-monterey.img
-```
-
-The finalizer does not contain a key, create a valid cryptographic signature,
-or access the headset. It is only suitable for an already-unlocked Monterey.
-Do not use a raw Android OTA boot image as the postmarketOS boot image.
-
-For hardware bring-up, the public kernel source has an important limitation:
-it omits `drivers/staging/oculus/internal`, and its uncompressed kernel is about
-2.1 MB smaller than the authentic OTA kernel. Generate a local image around a
-user-supplied OTA `boot.img` so those built-in hardware drivers remain present:
-
-```sh
-scripts/prepare-monterey-stock-kernel-boot \
-  export/boot.img /path/to/extracted-ota-boot.img \
-  export/boot-monterey-stock-kernel-90hz.img
-```
-
-This builder does not include or download proprietary files. It makes exactly
-these payload changes: `skip_initramfs` to the same-length unrecognized token
-`xkip_initramfs` in the uncompressed kernel, and the Lightman default/max cells
-from 72 to 90 in each appended DTB. It takes the pmOS ramdisk and UUID command
-line from `export/boot.img`, retains the OTA header, and recreates the legacy
-signature container. `--refresh-rate 72` produces a 72 Hz default instead.
-The signature remains cryptographically stale and therefore requires an
-already-unlocked headset.
-
-An unlocked headset may display Oculus's untrusted/corrupt-software warning
-before starting this image. That warning occurs before Linux and can delay USB
-NCM enumeration. This repository does not suppress it by modifying `vbmeta`,
-ABL, XBL, or another verified-boot component; only an Oculus-trusted signing
-key could make a locally rebuilt payload trusted by the stock bootloader.
-
-Once pmOS reaches its normal initramfs hook stage, it arms a five-minute
-recovery watchdog. For a bounded bring-up session, add `--debug-shell`; this
-puts `oculus.force-debug` at the front of Monterey's primary command-line field
-and holds the image at a root TCP shell on `172.16.42.1:23`. Connect from the
-host with `nc 172.16.42.1 23`. Run `/usr/sbin/oculus-reboot-bootloader` to
-return immediately. Otherwise, the
-watchdog automatically returns the headset to its bootloader rather than
-leaving it stuck in initramfs. Set `oculus.recovery_timeout=SECONDS` on the
-kernel command line to choose 30-1800 seconds; zero explicitly disables it.
-
-Run the proprietary-free transformer regression tests with:
-
-```sh
-python3 -m unittest discover -s tests -v
-```
-
-The supplied OTA identifies itself as Monterey Android 10 build
-`22310100490800000`, security patch 2021-04, timestamp 2022-01-12. Extract only
-the `boot` and `system` payload partitions for this workflow. Never flash or
-modify payload entries named `abl` or `xbl`.
-
-Before a device trial, confirm the generated boot image contains the patched
-DTB, the rootfs contains `/usr/sbin/oculus-refresh-rate`, and the kernel config
-has `CONFIG_DEVTMPFS_MOUNT`, `CONFIG_FRAMEBUFFER_CONSOLE`, and USB gadget
-support.
-
-## Device trial and recovery boundary
-
-The Quest is A/B. Keep a known-working Android installation and exact partition
-backups on slot A. The Linux trial may target **only** `boot_b` and `system_b`;
-preserve known-good copies of both B partitions first. Do not flash, erase, or
-modify `abl_a`, `abl_b`, `xbl_a`, `xbl_b`, or any other boot-chain partition.
-
-Start in fully booted Android slot A with root ADB, then use the guarded
-installer. It checks the product, serial, unlock state, image sizes and
-alignment, flashes explicitly named B partitions, returns to A, hashes the
-exact written ranges, and activates B only after both hashes match:
+Slot B only (`boot_b`, `system_b`). Keep backups of both B partitions before
+the first flash. Never write abl or xbl, on either slot.
 
 ```sh
 MONTEREY_SERIAL=YOUR_SERIAL scripts/flash-verified-slot-b \
-  export/boot-monterey.img export/oculus-monterey.img \
+  export/boot.img export/oculus-monterey.img \
   --confirm-overwrite-monterey-slot-b
+scripts/return-to-slot-a        # if a trial lands in fastboot
 ```
 
-If a B trial returns to fastboot, recover without writing a partition:
+The installer verifies product/serial/unlock state, flashes only the two named
+B partitions, hashes back what it wrote, and switches slots only after both
+hashes match.
+
+Once booted, USB NCM gives you SSH at `user@172.16.42.1`. To get back to
+fastboot from pmOS: `sudo /usr/sbin/oculus-reboot-bootloader` (a two-line shell
+wrapper around `reboot-mode bootloader`), or from the host:
+`scripts/oculus-usb-control reboot-bootloader`.
+
+If a boot fails before switch-root, a watchdog returns the headset to the
+bootloader after five minutes by default (`oculus.recovery_timeout=SECONDS` to
+change, 0 disables). Debug images hold an nc root shell on port 23 instead.
+
+## Desktop and VR
+
+`postmarketos-ui-oculus-labwc` starts labwc through Xorg fbdev — enough for a
+visible desktop, nowhere near VR frame rates. `oculus-vr start` launches the
+patched KWin nested on a separate Wayland socket with Monado underneath; the
+current display path is Lavapipe software rendering until someone writes an
+Adreno/KGSL compatibility layer or ports the kernel to DRM. See
+[docs/vr-desktop.md](docs/vr-desktop.md) for the design and
+[docs/bringup.md](docs/bringup.md) for per-subsystem gates.
+
+Controllers don't use Bluetooth pairing — the SyncBoss MCU owns the radio.
+The bridge runs the stock v50 input tool from a temporary executable bind of
+the inactive slot's system tree (read-only everywhere else) and feeds uinput;
+controller firmware updates are unreachable by design. Quest 2 controller
+pairing is a later, experimental follow-up.
+
+## Tests
+
+Host-side regression tests (script behavior, package consistency):
 
 ```sh
-scripts/return-to-slot-a
+python3 -m pytest tests/ -v
 ```
-
-The repository's USB and flash helpers contain no ABL or XBL write target.
-
-After the installed system starts, the device package runs BusyBox mdev for the
-stock kernel (which has no devtmpfs), keeps the NCM link at `172.16.42.1`,
-serves the host `172.16.42.2`, and starts SSH. An authenticated wheel user may
-invoke only the dedicated bootloader helper and exact refresh-rate selector
-arguments without a second password prompt. From the host:
-
-```sh
-scripts/oculus-usb-control status
-scripts/oculus-usb-control reboot-bootloader
-```
-
-The host helper selects ADB when Android is running and authenticated SSH when
-postmarketOS is running. It never contains a flash or erase operation.
-
-## Validation checklist
-
-- Confirm the device does not return directly to fastboot and that USB
-  networking exposes the postmarketOS initramfs or installed system.
-- Confirm the embedded boot/root UUIDs match the filesystems in the system
-  image.
-- Boot reaches a local shell and the panel is stable at the default 90 Hz.
-- `oculus-refresh-rate 72` and then `oculus-refresh-rate 90` each report the
-  requested value after the write.
-- Check controller tracking, head tracking, audio, Wi-Fi, suspend/resume, and
-  thermal behavior separately.
-- Treat an OVR Metrics value from Android as a runtime pacing observation, not
-  proof of a Linux panel cap. On the examined Android firmware, both Oculus
-  and SurfaceFlinger properties already report 90 Hz.
-
-## VR desktop status
-
-KWin MR !8671 is a KWin plugin, so it cannot be merged into labwc. The planned
-session uses labwc as the lightweight normal desktop and launches patched KWin
-on a separate nested Wayland socket for VR applications. The plugin is not a
-device driver or panel fix: it still requires a working OpenXR runtime, Qt
-Quick 3D XR, stereo presentation, and working head and controller tracking.
-
-Package `postmarketos-ui-oculus-labwc` provides `oculus-labwc-session`,
-`oculus-vr start`, `oculus-vr-run`, and `oculus-vr stop`. With the current
-non-DRM kernel, the base session uses Xorg fbdev plus a Pixman-rendered nested
-labwc as a visible-pixel diagnostic. That path is not expected to reach VR
-frame rates. The UI package installs the aarch64-tested
-`kwin-oculus-monterey` build and Monado, but deliberately does not auto-start
-VR while the Monterey Monado driver is absent. The production route remains
-the local v50 Qualcomm HWC/KGSL compatibility host, Monado, then nested KWin
-VR. Copying the Android Oculus runtime into postmarketOS is not a reliable
-substitute because it depends on Android Binder, SurfaceFlinger, vendor
-services, and proprietary runtime interfaces.
-
-The public kernel checkout references a missing
-`drivers/staging/oculus/internal/Kconfig`; this port removes that unavailable
-menu entry and empty Makefile descent so the public source builds without
-pretending the internal drivers are present. The generated stock-kernel path
-is therefore the current candidate for tracking, SyncBoss, and passthrough
-bring-up, while the GCC4 source build remains independently reproducible.
-
-[KWin MR !8671](https://invent.kde.org/plasma/kwin/-/merge_requests/8671)
-is preserved in the Monterey KWin fork and remains gated on OpenXR and tracking.
-The subsystem-by-subsystem proof gates and current runtime integration order are
-documented in [docs/bringup.md](docs/bringup.md).

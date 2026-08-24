@@ -208,9 +208,10 @@ public issue.
 
 Package revision r31 includes the strict command gateway and the runtime mount
 it needs. The authoritative slot-A mount stays `ro,nosuid,nodev,noexec`.
-`oculus-stock-runtime` bind-mounts only its `system/` directory at
-`/run/oculus-stock-runtime/system`, then makes that temporary view
-`ro,nosuid,nodev,exec`. This permits the owner's v50 linker and
+`oculus-stock-runtime` resolves the Android system partition of the slot
+opposite the one pmOS booted from, mounts it read-only itself, and bind-mounts
+only its `system/` directory at `/run/oculus-stock-runtime/system`, then makes
+that temporary view `ro,nosuid,nodev,exec`. This permits the owner's v50 linker and
 `syncboss_input_tool` to run without remounting or writing Android. The gateway
 accepts only status, list, scan, watch, pair, stream, battery, sleep, and
 bounded-haptic operations.
