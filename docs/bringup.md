@@ -46,9 +46,9 @@ mounted read-write, OpenRC completed, SSH worked over USB NCM. mdev runs as a
 foreground daemon in normal boot and populates framebuffer/KGSL/SyncBoss/
 input/media/V4L2 nodes before the default runlevel.
 
-Recovery paths: `sudo /usr/sbin/oculus-reboot-bootloader` from any pmOS shell
-(sync + `reboot-mode bootloader`, which the Qualcomm restart driver maps to the
-bootloader reason). From the host: `scripts/oculus-usb-control
+Recovery paths: run `sync` followed by `sudo reboot-mode bootloader` from a
+pmOS shell; the Qualcomm restart driver maps that argument to the bootloader
+restart reason. From the host, run `scripts/oculus-usb-control
 reboot-bootloader`. Debug images hold a root nc shell at port 23 for five
 minutes unless boot continues. The timeout is tunable via
 `oculus.recovery_timeout=SECONDS` (30-1800, 0 disables).
