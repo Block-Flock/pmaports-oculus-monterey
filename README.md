@@ -17,7 +17,7 @@ Packages in this repo:
 | `device-oculus-monterey` | device package: services, udev rules, sudo policy |
 | `linux-oculus-monterey` | kernel built from the public Oculus source (gcc4) |
 | `firmware-oculus-monterey` | WLAN/BT/GPU/ADSP firmware extracted from the v50 OTA |
-| `oculus-monterey-initramfs-support` | initramfs recovery hook, subpartition mapper, bootloader-return helper |
+| `oculus-monterey-initramfs-support` | initramfs recovery hook and subpartition mapper |
 | `postmarketos-ui-oculus-labwc` | labwc session + nested KWin VR launchers + pattern lock |
 | `kwin-oculus-monterey` | KWin with KDE MR !8671 VR mode, pinned fork |
 | `monado-oculus-monterey` | Monado with a Monterey SyncBoss IMU driver |
@@ -30,7 +30,8 @@ kernel carries a small patch (`honor-pmos-initramfs.patch`) plus the
 bootloader also wants Oculus's legacy 4096-byte BootSignature page after the
 boot payload; pmbootstrap doesn't produce one, so image finalizing uses a
 known-good boot image as a structural template
-(`scripts/prepare-monterey-boot`, no crypto, unlocked devices only).
+(`scripts/prepare-monterey-boot`, no crypto, unlocked devices only). This is a
+local bring-up aid and is not a supported postmarketOS kernel build path.
 
 pmOS lives inside `system_b`: the system image contains a small GPT with
 `pmOS_boot` and `pmOS_root`. The stock kernel reports UFS at 4096-byte logical
@@ -69,12 +70,11 @@ pmbootstrap install
 The 4.4 tree needs pmaports' gcc4 toolchain (selected automatically); Alpine's
 modern GCC produces a kernel that goes straight back to fastboot.
 
-Honest caveat: hardware-tested boot images so far wrap the OTA kernel using a
-local tool that isn't part of this repo, because repackaging stock kernels is
-not something pmOS supports — you're expected to roll your own kernel, which is
-what `linux-oculus-monterey` is for. That source-built kernel boots to the same
-container layout in testing but hasn't been proven end-to-end on the panel yet.
-Closing that gap is the current bring-up priority.
+Hardware testing has also used locally prepared images containing the OTA
+kernel. That workflow is outside postmarketOS support and is only useful for
+bring-up comparison. The port targets the source-built
+`linux-oculus-monterey` package; end-to-end panel validation of that kernel is
+still pending.
 
 ## Flashing and recovery
 
@@ -93,9 +93,8 @@ B partitions, hashes back what it wrote, and switches slots only after both
 hashes match.
 
 Once booted, USB NCM gives you SSH at `user@172.16.42.1`. To get back to
-fastboot from pmOS: `sudo /usr/sbin/oculus-reboot-bootloader` (a two-line shell
-wrapper around `reboot-mode bootloader`), or from the host:
-`scripts/oculus-usb-control reboot-bootloader`.
+fastboot from an OpenRC pmOS shell, run `sudo reboot-mode bootloader`; from the
+host, run `scripts/oculus-usb-control reboot-bootloader`.
 
 If a boot fails before switch-root, a watchdog returns the headset to the
 bootloader after five minutes by default (`oculus.recovery_timeout=SECONDS` to
