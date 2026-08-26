@@ -6,9 +6,11 @@ after the page-aligned boot image, even while unlocked. This tool copies that
 container from a user-supplied, known-working Monterey boot image, adjusts its
 declared image length, and restores the stock second-stage load address.
 
-The copied signature is not cryptographically valid for the new payload. This
-tool is only for an already-unlocked headset whose bootloader permits modified
-images. It does not sign images and never accesses or flashes a device.
+This local bring-up tool is not a supported postmarketOS kernel workflow and
+is not a replacement for building `linux-oculus-monterey`. The copied signature
+is not cryptographically valid for the new payload. Use it only with an
+already-unlocked headset whose bootloader permits modified images. It does not
+sign images and never accesses or flashes a device.
 """
 
 from __future__ import annotations
