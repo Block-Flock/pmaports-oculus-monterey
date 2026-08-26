@@ -1,4 +1,3 @@
-/usr/sbin/oculus-reboot-bootloader
 /usr/sbin/reboot-mode
 /usr/sbin/dmsetup
 /usr/share/oculus-monterey/oculus-initramfs-debug-login:/sbin/oculus-debug-login
