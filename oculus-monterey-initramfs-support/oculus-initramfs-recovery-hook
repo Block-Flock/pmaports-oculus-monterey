@@ -60,7 +60,8 @@ fi
 (
 	sleep "$timeout"
 	echo "Monterey initramfs timeout; returning to bootloader" >"$kmsg"
-	/usr/sbin/oculus-reboot-bootloader
+	sync
+	/usr/sbin/reboot-mode bootloader
 ) &
 echo "$!" >"$pidfile"
 echo "Monterey initramfs recovery watchdog: ${timeout}s" >"$kmsg"
